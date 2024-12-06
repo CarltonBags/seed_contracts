@@ -20,7 +20,9 @@ import "@openzeppelin/contracts/utils/Context.sol";
 
 // ERC165 Standard Interface Detection
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import "@openzeppelin/contracts/token/utils/ERC721Utils.sol";
+import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
+
+import "@openzeppelin/contracts/token/ERC721/utils/ERC721Utils.sol";
 
 // ERC6093 Draft (if included in OpenZeppelin, check location or update manually)
 import "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
