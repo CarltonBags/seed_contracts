@@ -70,23 +70,37 @@ contract Presale is ERC1155,  ReentrancyGuard {
     Round2Params params2;
     Round3Params params3;
 
+    error PresaleNotLive();
+    error NotAuthorized();
+    error AlreadyBought();
+    error InsufficientFunds();
+    error NotEnoughAllocation();
+    error Locked();
+    error MaxWallet();
+    error ZeroValue();
+    error InvalidParam();
+
+
+
+
+
     modifier round1live(){
         if(block.timestamp <= params1.start || block.timestamp >= params1.end){
-            revert("Round 1 is not live!");
+            revert PresaleNotLive();
         }
         _;
     }
 
     modifier round2live(){
         if(block.timestamp <= params2.start || block.timestamp >= params2.end){
-            revert("Round 2 is not live!");
+            revert PresaleNotLive();
         }
         _;
     }
 
      modifier round3live(){
         if(block.timestamp <= params3.start || block.timestamp >= params3.end){
-            revert("Round 2 is not live!");
+            revert PresaleNotLive();
         }
         _;
     }
@@ -100,26 +114,25 @@ contract Presale is ERC1155,  ReentrancyGuard {
     }
 
     modifier onlyAdmin(){
-        if(!admins[msg.sender]){revert("only admin");}
+        if(!admins[msg.sender]){revert NotAuthorized();}
         _;
     }
 
     modifier onlyOwner(){
-        if(msg.sender != presaleMaster){revert("only owner");}
+        if(msg.sender != presaleMaster){revert NotAuthorized();}
         _;
     }
 
 
     //PRESALE ROUND 1 FUNCTIONS
     function buySingleLNFT(uint d3ID) public round1live nonReentrant payable{
-        if(!presaleCreated){revert("there is no presale time set yet");}
-        if(pause){revert("presale is paused");}
-        if(canceled){revert("presale has been canceled");}
-        if(alreadyBought[d3ID]){revert("only one L-NFT per D3 NFT");}
-        if(params1.pricePerLNFT < _msgSender().balance){revert("insufficient funds");}
+        if(!presaleCreated){revert PresaleNotLive();}
+        if(pause){revert PresaleNotLive();}
+        if(canceled){revert PresaleNotLive();}
+        if(alreadyBought[d3ID]){revert AlreadyBought();}
         address nftOwner = d3NFT.ownerOf(d3ID);
-        if(nftOwner != _msgSender()){revert("only NFT owners can mint");}
-        if(params1.pricePerLNFT > msg.value){revert("insufficient msg.value");}
+        if(nftOwner != _msgSender()){revert NotAuthorized();}
+        if(params1.pricePerLNFT > msg.value){revert InsufficientFunds();}
         
         (bool success, ) = payable(address(this)).call{value: msg.value}("");
         require(success,"ETH transfer failed");
@@ -130,19 +143,19 @@ contract Presale is ERC1155,  ReentrancyGuard {
         allocationSize -= params1.tokensPerLNFT;
 
         ++currentNFTSupply;
-        if(currentNFTSupply > params1.maxNFTSupply){revert("not enough supply left");}
+        if(currentNFTSupply > params1.maxNFTSupply){revert NotEnoughAllocation();}
     }
 
 
     function buyBatchLNFT(uint amount, uint [] memory d3IDs) public round1live nonReentrant payable{
-        if(!presaleCreated){revert("there is no presale time set yet");}
-        if(pause){revert("presale is paused");}
-        if(canceled){revert("presale has been canceled");}
-        if(amount > d3IDs.length){revert("amount cannot be bigger than D3 Holdings");}
+        if(!presaleCreated){revert PresaleNotLive();}
+        if(pause){revert PresaleNotLive();}
+        if(canceled){revert PresaleNotLive();}
+        if(amount > d3IDs.length){revert InsufficientFunds();}
         batchOwnershipCheck(d3IDs);
         batchAllocation(d3IDs);
         uint totalCost = amount * params1.pricePerLNFT;
-        if(totalCost > msg.value){revert("insufficient funds");}
+        if(totalCost > msg.value){revert InsufficientFunds();}
 
         (uint [] memory tokenIds, uint [] memory amounts) = asSingletonArrays(tokenId, amount);
 
@@ -154,13 +167,13 @@ contract Presale is ERC1155,  ReentrancyGuard {
         allocationSize -= params1.tokensPerLNFT * amount;
 
         currentNFTSupply + amount;
-        if(currentNFTSupply > params1.maxNFTSupply){revert("not enough supply left");}
+        if(currentNFTSupply > params1.maxNFTSupply){revert NotEnoughAllocation();}
     }
 
     function withdrawTokensRoundOne(uint amountLNFT) public nonReentrant {
-        if(!unlocked){revert("tokens are not unlocked yet");}
+        if(!unlocked){revert Locked();}
         uint balanceLNFT = balanceOf(_msgSender(), tokenId);
-        if(amountLNFT > balanceLNFT){revert("you do not own that many LNFTs");}
+        if(amountLNFT > balanceLNFT){revert InsufficientFunds();}
 
         (uint [] memory tokenIds, uint [] memory amounts) = asSingletonArrays(tokenId, amountLNFT);
         _burnBatch(_msgSender(), tokenIds, amounts);
@@ -170,18 +183,18 @@ contract Presale is ERC1155,  ReentrancyGuard {
 
     //PRESALE ROUND 2 FUNCTIONS 
     function buyTokensRoundTwo(uint amount) public round2live payable{
-        if(!presaleCreated){revert("there is no presale time set yet");}
-        if(pause){revert("presale is paused");}
-        if(canceled){revert("presale has been canceled");}
-        if(amount > params2.maxWallet){revert("buy amount exceeds maxWallet");}
-        if(balances[_msgSender()] + amount > params2.maxWallet){revert("buy amount + balance exceeds maxWallet");}
-        if(amount > allocationSize){revert("not enough tokens left");}
+        if(!presaleCreated){revert PresaleNotLive();}
+        if(pause){revert PresaleNotLive();}
+        if(canceled){revert PresaleNotLive();}
+        if(amount > params2.maxWallet){revert MaxWallet();}
+        if(balances[_msgSender()] + amount > params2.maxWallet){revert MaxWallet();}
+        if(amount > allocationSize){revert NotEnoughAllocation();}
         uint balance = IERC20(params2.gatingToken).balanceOf(_msgSender());
-        if(balance < params2.gatingBalance){revert("insufficient balance of gating token");}
+        if(balance < params2.gatingBalance){revert InsufficientFunds();}
         
         
         uint totalCost = amount * params2.pricePerToken;
-        if(totalCost > msg.value){revert("insufficient msg.value");}
+        if(totalCost > msg.value){revert InsufficientFunds();}
 
         (bool success, ) = payable(address(this)).call{value: msg.value}("");
         require(success,"ETH transfer failed");
@@ -194,15 +207,15 @@ contract Presale is ERC1155,  ReentrancyGuard {
 
     //PRESALE ROUND 3 FUNCTIONS
     function buyTokensRoundThree(uint amount) external round3live payable {
-        if(!presaleCreated){revert("there is no presale time set yet");}
-        if(pause){revert("presale is paused");}
-        if(canceled){revert("presale has been canceled");}
-        if(amount > params3.maxWallet){revert("buy amount exceeds maxWallet");}
-        if(balances[_msgSender()] + amount > params3.maxWallet){revert("buy amount + balance exceeds maxWallet");}
-        if(amount > allocationSize){revert("not enough tokens left");}
+        if(!presaleCreated){revert PresaleNotLive();}
+        if(pause){revert PresaleNotLive();}
+        if(canceled){revert PresaleNotLive();}
+        if(amount > params3.maxWallet){revert MaxWallet();}
+        if(balances[_msgSender()] + amount > params3.maxWallet){revert MaxWallet();}
+        if(amount > allocationSize){revert NotEnoughAllocation();}
 
         uint totalCost = amount * params3.pricePerToken;
-        if(totalCost > msg.value){revert("insufficient msg.value");}
+        if(totalCost > msg.value){revert InsufficientFunds();}
 
         (bool success, ) = payable(address(this)).call{value: msg.value}("");
         require(success,"ETH transfer failed");
@@ -214,9 +227,9 @@ contract Presale is ERC1155,  ReentrancyGuard {
 
 
     function withdrawTokensRoundTwoAndThree(uint amount) external {
-        if(!unlocked){revert("tokens are not withdrawable yet");}
-        if(amount == 0){revert("amount cannot be 0");}
-        if(balances[_msgSender()] < amount){revert("your presale balance is 0");}
+        if(!unlocked){revert Locked();}
+        if(amount == 0){revert ZeroValue();}
+        if(balances[_msgSender()] < amount){revert InsufficientFunds();}
 
         balances[_msgSender()] -= amount;
         IERC20(tokenAddress).transfer(_msgSender(), amount);
@@ -228,7 +241,7 @@ contract Presale is ERC1155,  ReentrancyGuard {
         for(uint i = 0; i < d3IDs.length; i++){
             uint id = d3IDs[i];
             address holder = d3NFT.ownerOf(id);
-            if(_msgSender() != holder){revert("you do not own this NFT");}
+            if(_msgSender() != holder){revert InsufficientFunds();}
         }
     }
 
@@ -236,7 +249,7 @@ contract Presale is ERC1155,  ReentrancyGuard {
         for(uint i = 0; i < d3IDs.length; i++){
             uint id = d3IDs[i];
             if(alreadyBought[id]){
-                revert("this NFT has already bought an allocation");
+                revert AlreadyBought();
             }
             else{
                 alreadyBought[id] = true;
@@ -261,7 +274,7 @@ contract Presale is ERC1155,  ReentrancyGuard {
     }
 
     function withdrawETH(uint256 amountETH) external onlyOwner{
-        if(address(this).balance < amountETH){revert("contract does not have enough ETH");}
+        if(address(this).balance < amountETH){revert InsufficientFunds();}
 
         (bool success, ) = payable(_msgSender()).call{value: amountETH}("");
         require(success, "withdrawal failed");
@@ -311,13 +324,13 @@ contract Presale is ERC1155,  ReentrancyGuard {
     */
 
     function createPresale(uint [] memory params, address _gatingToken) external onlyAdmin {
-        if(params[0] <= block.timestamp){revert("Round 1 cannot start in the past");}
-        if(params[1] <= block.timestamp || params[1] <= params[0]){revert("invalid Round 1 end point");}
-        if(params[1] >= params[4]){revert("Round 1 has to end before Round 2 can start");}
-        if(params[4] >= params[5]){revert("Round 2 end point cannot be earlier than Round 2 starting point");}
-        if(params[5] >= params[11]){revert("Round 2 has to end before Round 3 can start");}
-        if(params[11] >= params[12]){revert("Round 3 end point cannot be earlier than Round 3 starting point");}
-        if(params[2] == 0 || params[3] == 0 || params[6] == 0 || params[7] == 0 || params[8] == 0 || params[9] == 0 || params[10] == 0 || params[11] == 0 || params[12] == 0 || params[13] == 0 || params[14] == 0){revert("invalid assignment to 0");}
+        if(params[0] <= block.timestamp){revert InvalidParam();}
+        if(params[1] <= block.timestamp || params[1] <= params[0]){revert InvalidParam();}
+        if(params[1] >= params[4]){revert InvalidParam();}
+        if(params[4] >= params[5]){revert InvalidParam();}
+        if(params[5] >= params[11]){revert InvalidParam();}
+        if(params[11] >= params[12]){revert InvalidParam();}
+        if(params[2] == 0 || params[3] == 0 || params[6] == 0 || params[7] == 0 || params[8] == 0 || params[9] == 0 || params[10] == 0 || params[11] == 0 || params[12] == 0 || params[13] == 0 || params[14] == 0){revert ZeroValue();}
 
         params1.start = params[0];
         params1.end = params[1];
@@ -357,12 +370,12 @@ contract Presale is ERC1155,  ReentrancyGuard {
     }
 
     function setTokenAddress(address _tokenAddress) external onlyAdmin{
-        if(_tokenAddress == address(0)){revert("cannot be the 0 address");}
+        if(_tokenAddress == address(0)){revert ZeroValue();}
         tokenAddress = _tokenAddress;
     }
 
     function setAllocationSize(uint256 _allocationSize) external onlyAdmin{
-        if(_allocationSize == 0){revert("cannot be 0");}
+        if(_allocationSize == 0){revert ZeroValue();}
         allocationSize = _allocationSize;
     }
 
