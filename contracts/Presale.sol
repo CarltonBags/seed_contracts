@@ -3,7 +3,8 @@ pragma solidity =0.8.28;
 
 //TO DOs
 // - check conditions for loops (i= 0 / 1)
-// - allocation size overflow check: check required to make sure there are not more tokens sold to presale-participants than are available.
+// - make function to move back presale start
+
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/Context.sol";
@@ -27,9 +28,9 @@ contract Presale is ERC1155,  ReentrancyGuard {
     mapping(address => uint) public ETHBalances; //storing the amount of ETH deposited by users.
    
     address private presaleMaster;
-
-    address tokenAddress;
-    uint allocationSize;
+    address private eventhandler;
+    address public tokenAddress;
+    uint public allocationSize;
    
     uint currentNFTSupply;
     uint8 tokenId = 1;
@@ -39,7 +40,6 @@ contract Presale is ERC1155,  ReentrancyGuard {
     bool canceled; //if true, users can withdraw their deposited ETH
     bool presaleCreated; //if true, 
 
-    //address d3Proxy = 0x09e8c457AEDB06C2830c4Be9805d1B20675EdeD8;
     IERC721 d3NFT = IERC721(0x09e8c457AEDB06C2830c4Be9805d1B20675EdeD8);
 
     struct Round1Params{
@@ -82,8 +82,6 @@ contract Presale is ERC1155,  ReentrancyGuard {
 
 
 
-
-
     modifier round1live(){
         if(block.timestamp <= params1.start || block.timestamp >= params1.end){
             revert PresaleNotLive();
@@ -98,19 +96,11 @@ contract Presale is ERC1155,  ReentrancyGuard {
         _;
     }
 
-     modifier round3live(){
+    modifier round3live(){
         if(block.timestamp <= params3.start || block.timestamp >= params3.end){
             revert PresaleNotLive();
         }
         _;
-    }
-
-    constructor (address _presaleMaster, address _tokenAddress, string memory _uri) ERC1155(_uri){
-        presaleMaster = _presaleMaster;
-        tokenAddress = _tokenAddress;
-
-        admins[_presaleMaster] = true;
-        
     }
 
     modifier onlyAdmin(){
@@ -121,6 +111,13 @@ contract Presale is ERC1155,  ReentrancyGuard {
     modifier onlyOwner(){
         if(msg.sender != presaleMaster){revert NotAuthorized();}
         _;
+    }
+
+    constructor (address _presaleMaster, address _tokenAddress, string memory _uri, address _eventhandler) ERC1155(_uri){
+        presaleMaster = _presaleMaster;
+        tokenAddress = _tokenAddress;
+        admins[_presaleMaster] = true;
+        eventhandler = _eventhandler;
     }
 
 
@@ -354,6 +351,17 @@ contract Presale is ERC1155,  ReentrancyGuard {
 
         IERC20(tokenAddress).transfer(address(this), params[9]);
         presaleCreated = true;
+
+    }
+
+    function movePresale (uint delay) external onlyAdmin{
+        if(block.timestamp >= params1.start){revert NotAuthorized()}
+        params1.start += delay;
+        params1.end += delay;
+        params2.start += delay;
+        params2.end += delay;
+        params3.start += delay;
+        params3.end += delay;
 
     }
 

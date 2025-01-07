@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 
 
-contract PresaleFactory is Ownable{
+contract TokenFactory is Ownable{
 
 address [] public ERC20s;
 
