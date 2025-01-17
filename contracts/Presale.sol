@@ -6,21 +6,42 @@ pragma solidity =0.8.28;
 // - make function to move back presale start
 
 
-import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "@openzeppelin/contracts/utils/Context.sol";
+//import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
-import "@openzeppelin/contracts/token/ERC721/utils/ERC721Utils.sol";
-import "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+//import "@openzeppelin/contracts/token/ERC721/utils/ERC721Utils.sol";
+//import "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
+//import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+//import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Utils.sol";
 
+interface IERC721 {
+    function ownerOf(uint256 tokenId) external view returns (address owner);
+}
 
+interface IERC20{
+    function balanceOf(address account) external view returns (uint256);
+    function transfer(address to, uint256 value) external returns (bool);
+}
 
-contract Presale is ERC1155,  ReentrancyGuard {
+interface IEventhandler{
+    function lNFTCollectionCreated(address collection, address token, string calldata uri, address owner) external;
+    function lNFTBought(address buyer, address presale, uint amountTokens, uint amountETH) external;
+    function tokensBought(address buyer, address presale, address token, uint amount, uint amountETH, uint8 round) external;
+    function tokensWithdrawn(address buyer, address presale, address token, uint amount) external;
+    function userETHWithdrawal(address user, address presale, uint amountETH) external;
+    function presaleCreated(address presale, address token, uint [] calldata params, address gatingToken) external;
+    function tokenDeployed(address token, string calldata name, string calldata symbol, address mintedTo, uint mintedAmount) external;
+    function setNewCaller(address caller) external;
+    function presaleMoved(address presale, uint delay) external;
+    function presalePaused(address presale, bool paused) external;
+    function presaleCanceled(address presale, bool canceled) external;
+    function tokensUnlocked(address presale, bool unlocked) external;
 
+}
+
+contract Presale is ERC1155 {
 
     mapping(address => bool) private admins;
     mapping(uint => bool) public alreadyBought; //storing which of the holders of the d3 nft have bought.
@@ -81,36 +102,41 @@ contract Presale is ERC1155,  ReentrancyGuard {
     error InvalidParam();
 
 
-
-    modifier round1live(){
-        if(block.timestamp <= params1.start || block.timestamp >= params1.end){
+    function roundLive(uint start, uint end) private {
+        if(block.timestamp <= start || block.timestamp >= end){
             revert PresaleNotLive();
         }
-        _;
     }
 
-    modifier round2live(){
+    /*function round1live() private {
+        if(block.timestamp <= start || block.timestamp >= end){
+            revert PresaleNotLive();
+        }
+        
+    }
+
+    function round2live() private{
         if(block.timestamp <= params2.start || block.timestamp >= params2.end){
             revert PresaleNotLive();
         }
-        _;
+        
     }
 
-    modifier round3live(){
+    function round3live() private {
         if(block.timestamp <= params3.start || block.timestamp >= params3.end){
             revert PresaleNotLive();
         }
-        _;
-    }
+        
+    }*/
 
-    modifier onlyAdmin(){
+    function onlyAdmin() private {
         if(!admins[msg.sender]){revert NotAuthorized();}
-        _;
+        
     }
 
-    modifier onlyOwner(){
+    function onlyOwner() private {
         if(msg.sender != presaleMaster){revert NotAuthorized();}
-        _;
+        
     }
 
     constructor (address _presaleMaster, address _tokenAddress, string memory _uri, address _eventhandler) ERC1155(_uri){
@@ -122,7 +148,8 @@ contract Presale is ERC1155,  ReentrancyGuard {
 
 
     //PRESALE ROUND 1 FUNCTIONS
-    function buySingleLNFT(uint d3ID) public round1live nonReentrant payable{
+    /*function buySingleLNFT(uint d3ID) public nonReentrant payable{
+        round1live();
         if(!presaleCreated){revert PresaleNotLive();}
         if(pause){revert PresaleNotLive();}
         if(canceled){revert PresaleNotLive();}
@@ -141,10 +168,13 @@ contract Presale is ERC1155,  ReentrancyGuard {
 
         ++currentNFTSupply;
         if(currentNFTSupply > params1.maxNFTSupply){revert NotEnoughAllocation();}
-    }
+
+        IEventhandler(eventhandler).lNFTBought(_msgSender(), address(this), 1, msg.value);
+    }*/
 
 
-    function buyBatchLNFT(uint amount, uint [] memory d3IDs) public round1live nonReentrant payable{
+    function buyBatchLNFT(uint amount, uint [] memory d3IDs) public payable{
+        roundLive(params1.start, params1.end);
         if(!presaleCreated){revert PresaleNotLive();}
         if(pause){revert PresaleNotLive();}
         if(canceled){revert PresaleNotLive();}
@@ -155,7 +185,6 @@ contract Presale is ERC1155,  ReentrancyGuard {
         if(totalCost > msg.value){revert InsufficientFunds();}
 
         (uint [] memory tokenIds, uint [] memory amounts) = asSingletonArrays(tokenId, amount);
-
         (bool success, ) = payable(address(this)).call{value: msg.value}("");
         require(success,"ETH transfer failed");
         ETHBalances[_msgSender()] = msg.value;
@@ -165,9 +194,11 @@ contract Presale is ERC1155,  ReentrancyGuard {
 
         currentNFTSupply + amount;
         if(currentNFTSupply > params1.maxNFTSupply){revert NotEnoughAllocation();}
+
+        IEventhandler(eventhandler).lNFTBought(_msgSender(), address(this), amount, msg.value);
     }
 
-    function withdrawTokensRoundOne(uint amountLNFT) public nonReentrant {
+    function withdrawTokensRoundOne(uint amountLNFT) public {
         if(!unlocked){revert Locked();}
         uint balanceLNFT = balanceOf(_msgSender(), tokenId);
         if(amountLNFT > balanceLNFT){revert InsufficientFunds();}
@@ -176,10 +207,13 @@ contract Presale is ERC1155,  ReentrancyGuard {
         _burnBatch(_msgSender(), tokenIds, amounts);
         uint amountERC20 = balanceLNFT * params1.tokensPerLNFT;
         IERC20(tokenAddress).transfer(_msgSender(), amountERC20);
+
+        IEventhandler(eventhandler).tokensWithdrawn(_msgSender(), address(this), tokenAddress, amountERC20);
     }
 
     //PRESALE ROUND 2 FUNCTIONS 
-    function buyTokensRoundTwo(uint amount) public round2live payable{
+    function buyTokensRoundTwo(uint amount) public payable{
+        roundLive(params2.start, params2.end);
         if(!presaleCreated){revert PresaleNotLive();}
         if(pause){revert PresaleNotLive();}
         if(canceled){revert PresaleNotLive();}
@@ -199,11 +233,14 @@ contract Presale is ERC1155,  ReentrancyGuard {
 
         allocationSize -= amount;
         balances[_msgSender()] += amount;
+
+        IEventhandler(eventhandler).tokensBought(_msgSender(), address(this), tokenAddress, amount, msg.value, 2);
     }
 
 
     //PRESALE ROUND 3 FUNCTIONS
-    function buyTokensRoundThree(uint amount) external round3live payable {
+    function buyTokensRoundThree(uint amount) external payable {
+        roundLive(params3.start, params3.end);
         if(!presaleCreated){revert PresaleNotLive();}
         if(pause){revert PresaleNotLive();}
         if(canceled){revert PresaleNotLive();}
@@ -220,6 +257,8 @@ contract Presale is ERC1155,  ReentrancyGuard {
 
         allocationSize -= amount;
         balances[_msgSender()] += amount;
+
+        IEventhandler(eventhandler).tokensBought(_msgSender(), address(this), tokenAddress, amount, msg.value, 3);
     }
 
 
@@ -231,6 +270,7 @@ contract Presale is ERC1155,  ReentrancyGuard {
         balances[_msgSender()] -= amount;
         IERC20(tokenAddress).transfer(_msgSender(), amount);
 
+        IEventhandler(eventhandler).tokensWithdrawn(_msgSender(), address(this), tokenAddress, amount);
     }
 
     //HELPER FUNCTIONS
@@ -255,24 +295,27 @@ contract Presale is ERC1155,  ReentrancyGuard {
     }
 
     //WITHDRAW ETH AFTER CANCELED PRESALE
-    function userETHWithdrawal() external {
+    function userETHWithdrawal() external payable{
         if(canceled){
             uint userETHBalance = ETHBalances[_msgSender()];
             ETHBalances[_msgSender()] -= userETHBalance;
             (bool success, ) = payable(_msgSender()).call{value: userETHBalance}("");
             require(success, "ETH transfer failed");
         }
+
+        IEventhandler(eventhandler).userETHWithdrawal(_msgSender(), address(this), msg.value);
     }
 
 
     //OWNER FUNCTIONS
-    function setAdmin(address admin, bool newStatus) external onlyOwner{
+    function setAdmin(address admin, bool newStatus) external{
+        onlyOwner();
         admins[admin] = newStatus;
     }
 
-    function withdrawETH(uint256 amountETH) external onlyOwner{
+    function withdrawETH(uint256 amountETH) external {
+        onlyOwner();
         if(address(this).balance < amountETH){revert InsufficientFunds();}
-
         (bool success, ) = payable(_msgSender()).call{value: amountETH}("");
         require(success, "withdrawal failed");
     }
@@ -320,7 +363,8 @@ contract Presale is ERC1155,  ReentrancyGuard {
     
     */
 
-    function createPresale(uint [] memory params, address _gatingToken) external onlyAdmin {
+    function createPresale(uint [] memory params, address _gatingToken) external  {
+        onlyAdmin();
         if(params[0] <= block.timestamp){revert InvalidParam();}
         if(params[1] <= block.timestamp || params[1] <= params[0]){revert InvalidParam();}
         if(params[1] >= params[4]){revert InvalidParam();}
@@ -352,10 +396,12 @@ contract Presale is ERC1155,  ReentrancyGuard {
         IERC20(tokenAddress).transfer(address(this), params[9]);
         presaleCreated = true;
 
+        IEventhandler(eventhandler).presaleCreated(address(this), tokenAddress, params, _gatingToken);
     }
 
-    function movePresale (uint delay) external onlyAdmin{
-        if(block.timestamp >= params1.start){revert NotAuthorized()}
+    /*function movePresale (uint delay) external {
+        onlyAdmin();
+        if(block.timestamp >= params1.start){revert NotAuthorized();}
         params1.start += delay;
         params1.end += delay;
         params2.start += delay;
@@ -363,28 +409,28 @@ contract Presale is ERC1155,  ReentrancyGuard {
         params3.start += delay;
         params3.end += delay;
 
-    }
+        IEventhandler(eventhandler).presaleMoved(address(this), delay);
+    }*/
 
-    function pausePresale(bool _pause) external onlyAdmin{
+    function pausePresale(bool _pause) external {
+        onlyAdmin();
         pause = _pause;
+
+        IEventhandler(eventhandler).presalePaused(address(this), _pause);
     }
 
-    function releaseTokens(bool _unlocked) external onlyAdmin{
+    function releaseTokens(bool _unlocked) external {
+        onlyAdmin();
         unlocked = _unlocked;
+
+        IEventhandler(eventhandler).tokensUnlocked(address(this), _unlocked);
     }
 
-    function cancelPresale(bool _canceled) external onlyAdmin{
+    function cancelPresale(bool _canceled) external {
+        onlyAdmin();
         canceled = _canceled;
-    }
 
-    function setTokenAddress(address _tokenAddress) external onlyAdmin{
-        if(_tokenAddress == address(0)){revert ZeroValue();}
-        tokenAddress = _tokenAddress;
-    }
-
-    function setAllocationSize(uint256 _allocationSize) external onlyAdmin{
-        if(_allocationSize == 0){revert ZeroValue();}
-        allocationSize = _allocationSize;
+        IEventhandler(eventhandler).presaleCanceled(address(this), _canceled);
     }
 
 

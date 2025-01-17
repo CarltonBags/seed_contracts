@@ -1,10 +1,50 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity =0.8.28;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/utils/Context.sol";
 
+abstract contract Context {
+    function _msgSender() internal view virtual returns (address) {
+        return msg.sender;
+    }
+}
 
+contract Ownable is Context {
+    address private _owner;
+
+    error OwnableUnauthorizedAccount(address account);
+    error OwnableInvalidOwner(address owner);
+
+    constructor () {
+        address msgSender = _msgSender();
+        _owner = msgSender;
+        emit OwnershipTransferred(address(0), msgSender);
+    }
+
+    function owner() public view returns (address) {
+        return _owner;
+    }
+
+    modifier onlyOwner() {
+        _checkOwner();
+        _;
+    }
+
+    function _checkOwner() internal view virtual {
+        if (_owner != _msgSender()) revert OwnableUnauthorizedAccount(_msgSender());
+    }
+
+    function renounceOwnership() public virtual onlyOwner {
+        emit OwnershipTransferred(_owner, address(0));
+        _owner = address(0);
+    }
+    
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    function transferOwnership(address newOwner) public virtual onlyOwner {
+        if (newOwner == address(0)) revert OwnableInvalidOwner(address(0));
+        emit OwnershipTransferred(_owner, newOwner);
+        _owner = newOwner;
+    }
+}
 
 contract Eventhandler is Ownable{
 
@@ -17,11 +57,6 @@ contract Eventhandler is Ownable{
 
 
 
-    constructor(address tokenFactory, address presaleFactory) Ownable(_msgSender()){
-        validFactories[tokenFactory] = true;
-        validFactories[presaleFactory] = true;
-    }
-
     modifier onlyFactory(){
         if(!validFactories[_msgSender()]){revert Unauthorized();}
         _;
@@ -33,44 +68,64 @@ contract Eventhandler is Ownable{
     }
 
     event FactoryDeployed(address newFactory, uint timestamp);
-    event LNFTCollectionCreated(address collection, string uri, address owner, uint timestamp);
+    event LNFTCollectionCreated(address collection, address token, string uri, address owner, uint timestamp);
     event LNFTBought(address buyer, address presale, uint amountTokens, uint amountETH, uint timestamp);
     event TokensBought(address buyer, address presale, address token, uint amount, uint amountETH, uint8 round, uint timestamp);
     event TokensWithdrawn(address buyer, address presale, address token, uint amount, uint timestamp);
     event UserETHWithdrawal(address user, address presale, uint amountETH, uint timestamp);
     event PresaleCreated(address presale, address token, uint [] params, address gatingToken, uint timestamp);
     event TokenDeployed(address token, string name, string symbol, address mintedTo, uint mintedAmount, uint timestamp);
+    event PresaleMoved(address presale, uint delay, uint timestamp);
+    event PresalePaused(address presale, bool paused, uint timestamp);
+    event PresaleCanceled(address presale, bool canceled, uint timestamp);
+    event TokensUnlocked(address presale, bool unlocked, uint timestamp);
 
     error Unauthorized();
 
 
     //EVENT FUNCTIONS
-    function lNFTCollectionCreated(address collection, address token, string uri, address owner) public onlyFactory{
+    function lNFTCollectionCreated(address collection, address token, string calldata uri, address owner) external onlyFactory{
         emit LNFTCollectionCreated(collection, token, uri, owner, block.timestamp);
     }
 
-    function lNFTBought(address buyer, address presale, uint amountTokens, uint amountETH) public onlyValidCaller{
+    function lNFTBought(address buyer, address presale, uint amountTokens, uint amountETH) external onlyValidCaller{
         emit LNFTBought(buyer, presale, amountTokens, amountETH, block.timestamp);
     }
 
-    function tokensBought(address buyer, address presale, address token, uint amount, uint amountETH, uint8 round) public onlyValidCaller{
+    function tokensBought(address buyer, address presale, address token, uint amount, uint amountETH, uint8 round) external onlyValidCaller{
         emit TokensBought(buyer, presale, token, amount, amountETH, round, block.timestamp);
     }
 
-    function tokensWithdrawn(address buyer, address presale, address token, uint amount) public onlyValidCaller{
+    function tokensWithdrawn(address buyer, address presale, address token, uint amount) external onlyValidCaller{
         emit TokensWithdrawn(buyer, presale, token, amount, block.timestamp);
     }
 
-    function userETHWithdrawal(address user, address presale, uint amountETH) public onlyValidCaller{
+    function userETHWithdrawal(address user, address presale, uint amountETH) external onlyValidCaller{
         emit UserETHWithdrawal(user, presale, amountETH, block.timestamp);
     }
 
-    function presaleCreated(address presale, address token, uint [] params, address gatingToken) public onlyValidCaller{
+    function presaleCreated(address presale, address token, uint [] calldata params, address gatingToken) external onlyValidCaller{
         emit PresaleCreated(presale, token, params, gatingToken, block.timestamp);
     }
 
-    function tokenDeployed(address token, string name, string symbol, address mintedTo, uint mintedAmount) public onlyValidCaller{
+    function tokenDeployed(address token, string calldata name, string calldata symbol, address mintedTo, uint mintedAmount) external onlyFactory{
         emit TokenDeployed(token, name, symbol, mintedTo, mintedAmount, block.timestamp);
+    }
+
+    function presaleMoved(address presale, uint delay) onlyValidCaller external{
+        emit PresaleMoved(presale, delay, block.timestamp);
+    }
+
+    function presalePaused(address presale, bool paused) onlyValidCaller external{
+        emit PresalePaused(presale, paused, block.timestamp);
+    }
+
+    function presaleCanceled(address presale, bool canceled) onlyValidCaller external{
+        emit PresaleCanceled(presale, canceled, block.timestamp);
+    }
+
+    function tokensUnlocked(address presale, bool unlocked) onlyValidCaller external{
+        emit TokensUnlocked(presale, unlocked, block.timestamp);
     }
 
     //CONTROL FUNCTIONS

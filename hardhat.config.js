@@ -1,5 +1,8 @@
 require("@nomicfoundation/hardhat-toolbox");
 require('dotenv').config()
+require("hardhat-gas-reporter")
+require("solidity-coverage")
+require('hardhat-storage-layout')
 
 
 /** @type import('hardhat/config').HardhatUserConfig */
@@ -9,7 +12,7 @@ module.exports = {
     optimizer: {
       enabled: true,
       runs: 200
-    }
+    },
   },
   networks: {
     hardhat: {
@@ -52,5 +55,8 @@ module.exports = {
       accounts: [process.env.PRIVATE_KEY]
     }*/
     
+  },
+  gasReporter:{
+    enabled:true
   }
 };
