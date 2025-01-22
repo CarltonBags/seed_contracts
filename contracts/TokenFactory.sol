@@ -47,4 +47,7 @@ contract TokenFactory is Ownable{
         active = _active;
     }
 
+    function receive() public{}
+    function fallback()public{}
+
 }

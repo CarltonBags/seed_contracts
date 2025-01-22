@@ -15,6 +15,12 @@ describe("PresaleFactory", function() {
         //define callers
         const [sexy, admin, user] = await ethers.getSigners()
 
+        //spoof NFT contract
+        const NFTContract = await ethers.getContractFactory("D3NFT")
+        const userConnectNFTFactory = NFTContract.connect(user)
+        const nftContract = await userConnectNFTFactory.deploy("d3", "d3")
+        const nftContractAddress = await nftContract.getAddress()
+
         //deploy the eventhandler
         const Eventhandler = await ethers.getContractFactory("Eventhandler");
         const eventhandler = await Eventhandler.deploy();
@@ -22,7 +28,7 @@ describe("PresaleFactory", function() {
 
         //deploy the presale factory
         const PresaleFactory = await ethers.getContractFactory("PresaleFactory");
-        const presaleFactory = await PresaleFactory.deploy(eAddress);
+        const presaleFactory = await PresaleFactory.deploy(eAddress, nftContractAddress);
         const pAddress = await presaleFactory.getAddress();
 
         //set presale factory as valid caller to eventhandler

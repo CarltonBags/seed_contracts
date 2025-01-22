@@ -15,6 +15,7 @@ import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
 //import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import "@openzeppelin/contracts/token/ERC1155/utils/ERC1155Utils.sol";
+import "hardhat/console.sol";
 
 interface IERC721 {
     function ownerOf(uint256 tokenId) external view returns (address owner);
@@ -23,6 +24,8 @@ interface IERC721 {
 interface IERC20{
     function balanceOf(address account) external view returns (uint256);
     function transfer(address to, uint256 value) external returns (bool);
+    function transferFrom(address from, address to, uint256 value) external returns (bool);
+
 }
 
 interface IEventhandler{
@@ -53,7 +56,7 @@ contract Presale is ERC1155 {
     address public tokenAddress;
     uint public allocationSize;
    
-    uint currentNFTSupply;
+    uint public currentNFTSupply;
     uint8 tokenId = 1;
 
     bool pause; //pause presale in case of emergency
@@ -61,7 +64,10 @@ contract Presale is ERC1155 {
     bool canceled; //if true, users can withdraw their deposited ETH
     bool presaleCreated; //if true, 
 
-    IERC721 d3NFT = IERC721(0x09e8c457AEDB06C2830c4Be9805d1B20675EdeD8);
+    //IERC721 d3NFT = IERC721(0x09e8c457AEDB06C2830c4Be9805d1B20675EdeD8);
+    address nftAddress;
+    IERC721 d3NFT = IERC721(nftAddress);
+
 
     struct Round1Params{
         uint start;
@@ -139,11 +145,12 @@ contract Presale is ERC1155 {
         
     }
 
-    constructor (address _presaleMaster, address _tokenAddress, string memory _uri, address _eventhandler) ERC1155(_uri){
+    constructor (address _presaleMaster, address _tokenAddress, string memory _uri, address _eventhandler, address _nftAddress) ERC1155(_uri){
         presaleMaster = _presaleMaster;
         tokenAddress = _tokenAddress;
         admins[_presaleMaster] = true;
         eventhandler = _eventhandler;
+        nftAddress = _nftAddress;
     }
 
 
@@ -173,12 +180,12 @@ contract Presale is ERC1155 {
     }*/
 
 
-    function buyBatchLNFT(uint amount, uint [] memory d3IDs) public payable{
+    function buyBatchLNFT(uint amount, uint [] calldata d3IDs) public payable{
         roundLive(params1.start, params1.end);
         if(!presaleCreated){revert PresaleNotLive();}
         if(pause){revert PresaleNotLive();}
         if(canceled){revert PresaleNotLive();}
-        if(amount > d3IDs.length){revert InsufficientFunds();}
+        if(amount != d3IDs.length){revert InsufficientFunds();}
         batchOwnershipCheck(d3IDs);
         batchAllocation(d3IDs);
         uint totalCost = amount * params1.pricePerLNFT;
@@ -192,7 +199,7 @@ contract Presale is ERC1155 {
 
         allocationSize -= params1.tokensPerLNFT * amount;
 
-        currentNFTSupply + amount;
+        currentNFTSupply += amount;
         if(currentNFTSupply > params1.maxNFTSupply){revert NotEnoughAllocation();}
 
         IEventhandler(eventhandler).lNFTBought(_msgSender(), address(this), amount, msg.value);
@@ -207,6 +214,8 @@ contract Presale is ERC1155 {
         _burnBatch(_msgSender(), tokenIds, amounts);
         uint amountERC20 = balanceLNFT * params1.tokensPerLNFT;
         IERC20(tokenAddress).transfer(_msgSender(), amountERC20);
+
+        currentNFTSupply -= amountLNFT;
 
         IEventhandler(eventhandler).tokensWithdrawn(_msgSender(), address(this), tokenAddress, amountERC20);
     }
@@ -274,13 +283,20 @@ contract Presale is ERC1155 {
     }
 
     //HELPER FUNCTIONS
-    function batchOwnershipCheck(uint [] memory d3IDs) internal view{
+   function batchOwnershipCheck(uint [] memory d3IDs) public{
         for(uint i = 0; i < d3IDs.length; i++){
             uint id = d3IDs[i];
-            address holder = d3NFT.ownerOf(id);
+            address holder = IERC721(nftAddress).ownerOf(id);
             if(_msgSender() != holder){revert InsufficientFunds();}
         }
     }
+    
+
+    /*function ownershipCheck(uint d3ID) public view returns (address) {
+        address holder = IERC721(nftAddress).ownerOf(d3ID);
+        if(_msgSender() != holder){revert InsufficientFunds();}
+
+    }*/
 
     function batchAllocation(uint [] memory d3IDs) internal {
         for(uint i = 0; i < d3IDs.length; i++){
@@ -295,7 +311,7 @@ contract Presale is ERC1155 {
     }
 
     //WITHDRAW ETH AFTER CANCELED PRESALE
-    function userETHWithdrawal() external payable{
+   /* function userETHWithdrawal() external payable{
         if(canceled){
             uint userETHBalance = ETHBalances[_msgSender()];
             ETHBalances[_msgSender()] -= userETHBalance;
@@ -304,7 +320,7 @@ contract Presale is ERC1155 {
         }
 
         IEventhandler(eventhandler).userETHWithdrawal(_msgSender(), address(this), msg.value);
-    }
+    }*/
 
 
     //OWNER FUNCTIONS
@@ -313,12 +329,12 @@ contract Presale is ERC1155 {
         admins[admin] = newStatus;
     }
 
-    function withdrawETH(uint256 amountETH) external {
+    /*function withdrawETH(uint256 amountETH) external {
         onlyOwner();
         if(address(this).balance < amountETH){revert InsufficientFunds();}
         (bool success, ) = payable(_msgSender()).call{value: amountETH}("");
         require(success, "withdrawal failed");
-    }
+    }*/
 
 
 
@@ -393,7 +409,7 @@ contract Presale is ERC1155 {
 
         allocationSize = params[9];
 
-        IERC20(tokenAddress).transfer(address(this), params[9]);
+        IERC20(tokenAddress).transferFrom(msg.sender, address(this), params[9]);
         presaleCreated = true;
 
         IEventhandler(eventhandler).presaleCreated(address(this), tokenAddress, params, _gatingToken);

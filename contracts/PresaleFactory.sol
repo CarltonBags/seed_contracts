@@ -11,6 +11,7 @@ contract PresaleFactory {
     address owner;
     address [] public Presales;
     address eventhandler;
+    address nftAddress;
     bool private active;
 
     error Inactive();
@@ -18,9 +19,10 @@ contract PresaleFactory {
     error Unauthorized();
 
 
-    constructor(address _eventhandler) {
+    constructor(address _eventhandler, address _nftAddress) {
         eventhandler = _eventhandler;
         owner = msg.sender;
+        nftAddress = _nftAddress;
     }
 
     function deployPresale(address _tokenAddress, string memory _uri) external {
@@ -31,7 +33,8 @@ contract PresaleFactory {
             msg.sender,
             _tokenAddress,
             _uri,
-            eventhandler
+            eventhandler,
+            nftAddress
         ));
 
         Presales.push(presale);
