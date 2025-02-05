@@ -50,10 +50,10 @@ module.exports = {
       url: process.env.SEPOLIA_ENDPOINT,
       accounts: [process.env.PRIVATE_KEY]
     },*/
-    /*bsc_testnet:{
+    bsc_testnet:{
       url: "https://bsc-prebsc-dataseed.bnbchain.org",
-      accounts: [process.env.PRIVATE_KEY]
-    }*/
+      accounts: [process.env.PRIVATE_KEY_1]
+    }
     
   },
   gasReporter:{

@@ -57,7 +57,6 @@ describe("Presale", function() {
         await sexyConnectTokenFactory.setActive(true)
 
         
-
         //deploy ERC-20 token
         const amount = ethers.parseEther("300");
         const userAmount = ethers.parseEther("100")
@@ -75,7 +74,6 @@ describe("Presale", function() {
             }
 
         const userConnectFactory = presaleFactory.connect(user);
-
         const gatingToken = await sexyConnectTokenFactory.deployERC20("GATE","$GATE", amount)
         const receiptGate = await gatingToken.wait();
         const eventsGate = await eventhandler.queryFilter(eventFilter, receiptGate.blockNumber, receiptGate.blockNumber)
@@ -84,11 +82,20 @@ describe("Presale", function() {
         if (eventsGate.length > 0){
             gatingAddress = eventsGate[0].args.token
         }
-        
+
+        const gatingContract = await ethers.getContractAt("CustomERC20", gatingAddress)
+        const transfer = await gatingContract.connect(sexy).transfer(user, userAmount)
+
+        //deploy staking contract
+        const StakingContract = await ethers.getContractFactory("D3Staking")
+        const stakingContract = await StakingContract.deploy("dSTAKE", "$dSTAKE", gatingAddress)
+        const stakingAddress = await stakingContract.getAddress()
+        const userConnectStaking = stakingContract.connect(user)
 
 
         //presaleParams
         const timestampRoundOne = await time.latest() + 1000
+
         //const timestampRoundOne = 1768833026
         const nftPrice = ethers.parseEther("0.1")
         const tokensPerLNFT = ethers.parseEther("1")
@@ -96,8 +103,8 @@ describe("Presale", function() {
         const pricePerTokenRoundThree = ethers.parseEther("0.3")
         const maxWallet = ethers.parseEther("2")
         const gatingBalance = ethers.parseEther("50")
-        const allocationSize = ethers.parseEther("75")
-        const maxNFTSupply = 100
+        const allocationSize = ethers.parseEther("5")
+        const maxNFTSupply = 5
 
         const presaleParams = [timestampRoundOne, timestampRoundOne + 100, nftPrice, tokensPerLNFT, timestampRoundOne + 200, timestampRoundOne + 300, pricePerTokenRoundTwo, maxWallet, gatingBalance, allocationSize, maxNFTSupply, timestampRoundOne + 400, timestampRoundOne + 500, pricePerTokenRoundThree, maxWallet ]
 
@@ -119,7 +126,7 @@ describe("Presale", function() {
         await sexyConnectToken.approve(presaleAddress, presaleParams[9])
         
         //create new presale
-        await sexyConnectPresale.createPresale(presaleParams, gatingAddress)
+        await sexyConnectPresale.createPresale(presaleParams, stakingAddress)
 
         //connect user to the presale
         const userConnectPresale = Presale.connect(user)
@@ -127,7 +134,7 @@ describe("Presale", function() {
         //connect user to the token
         const userConnectToken = TokenContract.connect(user)
 
-        return { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, Presale, userConnectPresale, amount, userAmount, userConnectNFT, userAddress, sexyConnectPresale, userConnectToken};
+        return { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, Presale, userConnectPresale, amount, userAmount, userConnectNFT, userAddress, sexyConnectPresale, userConnectToken, presaleAddress, stakingContract, userConnectStaking, stakingAddress, gatingToken, gatingContract, Presale};
     }
 
     beforeEach(async function(){
@@ -274,6 +281,199 @@ describe("Presale", function() {
                 //console.log("lnftBalanceAfter", lnftBalanceAfter)
             expect(lnftBalanceAfter).to.equal(0)
         })
+        it("should revert when the max LNFT-supply is to be exceeded", async function(){
+            const { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, sexyConnectPresale, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, userConnectPresale, userConnectNFT, userAddress, userConnectToken } = context
+
+            //mint 6 NFTs while the total siupply is set to 5
+            await time.increaseTo(presaleParams[0])
+            const tokenIDs = ["1","2","3","5","6","7"]
+            const value = ethers.parseEther("0.6")
+            expect(userConnectPresale.buyBatchLNFT(6, tokenIDs, {value: value})).to.be.revertedWithCustomError
+        })
+        it("should revert when round 1 is not live", async function (){
+            const { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, sexyConnectPresale, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, userConnectPresale, userConnectNFT, userAddress, userConnectToken } = context
+
+            //increase timestamp to just before round 1
+            await time.increaseTo(presaleParams[0] - 10 )
+
+            //set presale params
+            const tokenIDs = ["1","2","3"]
+            const value = ethers.parseEther("0.3")
+            const amount = 3
+
+            //buy round 1
+            expect(userConnectPresale.buyBatchLNFT(amount, tokenIDs, {value: value})).to.be.revertedWithCustomError
+
+            //forward to after round 1
+            await time.increaseTo(presaleParams[4])
+            
+            //buy round 1
+            expect(userConnectPresale.buyBatchLNFT(amount, tokenIDs, {value: value})).to.be.revertedWithCustomError
+        })
+
+    describe("Round 2 Presale functions", function(){
+        it("should allow a staker with valid stake to buy tokens", async function(){
+            const { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, sexyConnectPresale, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, userConnectPresale, userConnectNFT, userAddress, userConnectToken, stakingContract, userConnectStaking, stakingAddress, gatingToken, gatingContract } = context
+
+            //user approves tokens
+            const stakingAmount = ethers.parseEther("75")
+            const approval = await gatingContract.connect(user).approve(stakingAddress, stakingAmount)
+
+            //user stakes tokens
+            const userStake = await userConnectStaking.mint(stakingAmount)
+            const userStakedAmount = await userConnectStaking.balanceOf(userAddress)
+            console.log("user staked amount", userStakedAmount)
+
+            //forward to round 2 start
+            await time.increaseTo(presaleParams[4])
+
+            //buy round 2
+            const buyAmount = ethers.parseEther("1")
+            const value = ethers.parseEther("0.2")
+            await expect(userConnectPresale.buyRoundTwoAndThree(buyAmount, 2, {value: value})).to.not.be.reverted
+
+            //check presale Balance
+            const presaleBalance = await userConnectPresale.balances(userAddress)
+            expect(presaleBalance).to.equal(buyAmount)
+        })
+        it("should revert if a staker has an insufficient staking balance", async function(){
+            const { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, sexyConnectPresale, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, userConnectPresale, userConnectNFT, userAddress, userConnectToken, stakingContract, userConnectStaking, stakingAddress, gatingToken, gatingContract } = context
+
+            //user approves tokens
+            const stakingAmount = ethers.parseEther("40")
+            const approval = await gatingContract.connect(user).approve(stakingAddress, stakingAmount)
+
+            //user stakes tokens
+            const userStake = await userConnectStaking.mint(stakingAmount)
+            const userStakedAmount = await userConnectStaking.balanceOf(userAddress)
+            console.log("user staked amount", userStakedAmount)
+
+            //forward to round 2 start
+            await time.increaseTo(presaleParams[4])
+
+            //buy round 2
+            const buyAmount = ethers.parseEther("1")
+            const value = ethers.parseEther("0.2")
+            expect(userConnectPresale.buyRoundTwoAndThree(buyAmount, 2, {value: value})).to.be.revertedWithCustomError
+
+            //check presale Balance
+            const presaleBalance = await userConnectPresale.balances(userAddress)
+            expect(presaleBalance).to.equal(0)
+        })
+        it("should revert if a staking timestamp is after the cutoff point", async function(){
+            const { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, sexyConnectPresale, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, userConnectPresale, userConnectNFT, userAddress, userConnectToken, stakingContract, userConnectStaking, stakingAddress, gatingToken, gatingContract } = context
+
+            //fast forward to round 2 start
+            await time.increaseTo(presaleParams[4])
+
+            //user approves token
+            const stakingAmount = ethers.parseEther("75")
+            const approval = await gatingContract.connect(user).approve(stakingAddress, stakingAmount)
+
+            //user stakes tokens
+            const userStake = await userConnectStaking.mint(stakingAmount)
+            const userStakedAmount = await userConnectStaking.balanceOf(userAddress)
+            console.log("user staked amount", userStakedAmount)
+
+            //buy round 2
+            const buyAmount = ethers.parseEther("1")
+            const value = ethers.parseEther("0.2")
+            userConnectPresale.buyRoundTwoAndThree(buyAmount, 2, {value: value})
+
+            //check presale Balance
+            const presaleBalance = await userConnectPresale.balances(userAddress)
+            expect(presaleBalance).to.equal(0)
+        })
+        it("should allow a buyer to withdraw tokens", async function(){
+            const { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, sexyConnectPresale, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, userConnectPresale, userConnectNFT, userAddress, userConnectToken, stakingContract, userConnectStaking, stakingAddress, gatingToken, gatingContract } = context
+
+            //user approves tokens
+            const stakingAmount = ethers.parseEther("75")
+            const approval = await gatingContract.connect(user).approve(stakingAddress, stakingAmount)
+
+            //user stakes tokens
+            const userStake = await userConnectStaking.mint(stakingAmount)
+
+            //forward to round 2 start
+            await time.increaseTo(presaleParams[4])
+
+            //buy round 2
+            const buyAmount = ethers.parseEther("1")
+            const value = ethers.parseEther("0.2")
+            await expect(userConnectPresale.buyRoundTwoAndThree(buyAmount, 2, {value: value})).to.not.be.reverted
+
+            //check presale Balance
+            const presaleBalance = await userConnectPresale.balances(userAddress)
+
+            //fast forward to presale end
+            await time.increaseTo(presaleParams[12])
+
+            //unlock tokens
+            await sexyConnectPresale.releaseTokens(true)
+
+            //user withdraw presale tokens
+            await expect(userConnectPresale.withdrawTokensRoundTwoAndThree(buyAmount)).to.not.be.reverted
+
+            //check user contract balance after withdrawal
+            const contractBalance = await userConnectPresale.balances(userAddress)
+            expect(contractBalance).to.equal(0)
+
+            //check user wallet balance after withdrawal
+            const userBalance = await userConnectToken.balanceOf(userAddress)
+            expect(userBalance).to.equal(buyAmount)
+        })
+
+    })
+    describe("Round 3 Presale functions", function(){
+        it("should allow any buyer to buy tokens", async function(){
+            const { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, sexyConnectPresale, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, userConnectPresale, userConnectNFT, userAddress, userConnectToken, stakingContract, userConnectStaking, stakingAddress, gatingToken, gatingContract } = context
+
+            //forward to round 3 start
+            await time.increaseTo(presaleParams[11])
+
+            //buy round 3
+            const buyAmount = ethers.parseEther("1")
+            const value = ethers.parseEther("0.3")
+            await userConnectPresale.buyRoundTwoAndThree(buyAmount, 3, {value: value})
+
+            //check presale Balance
+            const presaleBalance = await userConnectPresale.balances(userAddress)
+            expect(presaleBalance).to.equal(buyAmount)
+        })
+        it("should allow a buyer to withdraw tokens", async function(){
+            const { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, sexyConnectPresale, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, userConnectPresale, userConnectNFT, userAddress, userConnectToken, stakingContract, userConnectStaking, stakingAddress, gatingToken, gatingContract } = context
+
+            //forward to round 3 start
+            await time.increaseTo(presaleParams[11])
+
+            //buy round 3
+            const buyAmount = ethers.parseEther("1")
+            const value = ethers.parseEther("0.3")
+            await expect(userConnectPresale.buyRoundTwoAndThree(buyAmount, 3, {value: value})).to.not.be.reverted
+
+            //check presale Balance
+            const presaleBalance = await userConnectPresale.balances(userAddress)
+
+            //fast forward to presale end
+            await time.increaseTo(presaleParams[12])
+
+            //unlock tokens
+            await sexyConnectPresale.releaseTokens(true)
+
+            //user withdraw presale tokens
+            await expect(userConnectPresale.withdrawTokensRoundTwoAndThree(buyAmount)).to.not.be.reverted
+
+            //check user contract balance after withdrawal
+            const contractBalance = await userConnectPresale.balances(userAddress)
+            expect(contractBalance).to.equal(0)
+
+            //check user wallet balance after withdrawal
+            const userBalance = await userConnectToken.balanceOf(userAddress)
+            expect(userBalance).to.equal(buyAmount)
+        })
+        
+    })
+    describe("Presale Logic", function (){
         it("should track the allocationSize correctly", async function(){
             const { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, sexyConnectPresale, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, userConnectPresale, userConnectNFT, userAddress, userConnectToken } = context
 
@@ -305,6 +505,54 @@ describe("Presale", function() {
             expect(allocationSizeAfterBuy).to.equal(allocationSizeBeforeBuy - parsedAmount)
 
         })
+        it("should track user ETH balance and contract balance correctly", async function(){
+            const { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, sexyConnectPresale, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, userConnectPresale, userConnectNFT, userAddress, userConnectToken, presaleAddress } = context
+
+            //set block timestamp to round 1
+            await time.increaseTo(presaleParams[0])
+
+            //buy Params
+            const tokenIDs = ["1","2","3"]
+            const value = ethers.parseEther("0.3")
+            const amount = 3
+          
+            //buy round 1
+            await userConnectPresale.buyBatchLNFT(amount, tokenIDs, {value: value})
+
+            //check contract balance
+            const contractETHBalance = await ethers.provider.getBalance(presaleAddress)
+            expect(contractETHBalance).to.equal(value)
+
+            //check tracking balance
+            const userETHBalance = await userConnectPresale.ETHBalances(userAddress)
+            expect(userETHBalance).to.equal(value)            
+
+        })
+        it("should allow a user to withdraw ETH when presale is canceled", async function(){
+            const { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, sexyConnectPresale, userConnectFactory, sexyConnectTokenFactory, tokenFactory, tokenFactoryAddress, presaleParams, gatingAddress, tokenAddress, userConnectPresale, userConnectNFT, userAddress, userConnectToken, presaleAddress, presaleContract, Presale } = context
+
+            //move timestamp forward to round 1
+            await time.increaseTo(presaleParams[0])
+
+            //buy round 1
+            const value = ethers.parseEther("0.2")
+            const amount = 2
+            const d3IDs = [1,2]
+            const userBuy = await userConnectPresale.buyBatchLNFT(amount, d3IDs, {value:value})
+
+            //cancel presale
+            await expect(sexyConnectPresale.cancelPresale(true)).to.not.be.reverted
+
+            //check user ETH balance on presale
+            const presaleBalance = await ethers.provider.getBalance(Presale)
+            expect(presaleBalance).to.equal(value)
+
+            //withdraw user balance after cancelation
+            await userConnectPresale.userETHWithdrawal()
+            const presaleBalanceAfter = await ethers.provider.getBalance(Presale)
+            expect(presaleBalanceAfter).to.equal(0)
+        })
+    })
 
 
     })
