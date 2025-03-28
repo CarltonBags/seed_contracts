@@ -69,16 +69,16 @@ contract Eventhandler is Ownable{
 
     event FactoryDeployed(address newFactory, uint timestamp);
     event LNFTCollectionCreated(address collection, address token, string uri, address owner, uint timestamp);
-    event LNFTBought(address buyer, address presale, uint amountTokens, uint amountETH, uint timestamp);
-    event TokensBought(address buyer, address presale, address token, uint amount, uint amountETH, uint8 round, uint timestamp);
+    event LNFTBought(address buyer, address presale, uint amountTokens, uint amountUSDC, uint timestamp);
+    event TokensBought(address buyer, address presale, address token, uint amount, uint amountUSDC, uint8 round, uint timestamp);
     event TokensWithdrawn(address buyer, address presale, address token, uint amount, uint timestamp);
-    event UserETHWithdrawal(address user, address presale, uint amountETH, uint timestamp);
+    event UserUSDCWithdrawal(address user, address presale, uint amountUSDC, uint timestamp);
     event PresaleCreated(address presale, address token, uint [] params, address gatingToken, uint timestamp);
     event TokenDeployed(address token, string name, string symbol, address mintedTo, uint mintedAmount, uint timestamp);
     event PresaleMoved(address presale, uint delay, uint timestamp);
     event PresalePaused(address presale, bool paused, uint timestamp);
     event PresaleCanceled(address presale, bool canceled, uint timestamp);
-    event TokensUnlocked(address presale, bool unlocked, uint timestamp);
+    event PresaleFinalised(address presale, uint timestamp);
 
     error Unauthorized();
 
@@ -88,20 +88,20 @@ contract Eventhandler is Ownable{
         emit LNFTCollectionCreated(collection, token, uri, owner, block.timestamp);
     }
 
-    function lNFTBought(address buyer, address presale, uint amountTokens, uint amountETH) external onlyValidCaller{
-        emit LNFTBought(buyer, presale, amountTokens, amountETH, block.timestamp);
+    function lNFTBought(address buyer, address presale, uint amountTokens, uint amountUSDC) external onlyValidCaller{
+        emit LNFTBought(buyer, presale, amountTokens, amountUSDC, block.timestamp);
     }
 
-    function tokensBought(address buyer, address presale, address token, uint amount, uint amountETH, uint8 round) external onlyValidCaller{
-        emit TokensBought(buyer, presale, token, amount, amountETH, round, block.timestamp);
+    function tokensBought(address buyer, address presale, address token, uint amount, uint amountUSDC, uint8 round) external onlyValidCaller{
+        emit TokensBought(buyer, presale, token, amount, amountUSDC, round, block.timestamp);
     }
 
     function tokensWithdrawn(address buyer, address presale, address token, uint amount) external onlyValidCaller{
         emit TokensWithdrawn(buyer, presale, token, amount, block.timestamp);
     }
 
-    function userETHWithdrawal(address user, address presale, uint amountETH) external onlyValidCaller{
-        emit UserETHWithdrawal(user, presale, amountETH, block.timestamp);
+    function userUSDCWithdrawal(address user, address presale, uint amountUSDC) external onlyValidCaller{
+        emit UserUSDCWithdrawal(user, presale, amountUSDC, block.timestamp);
     }
 
     function presaleCreated(address presale, address token, uint [] calldata params, address gatingToken) external onlyValidCaller{
@@ -124,8 +124,8 @@ contract Eventhandler is Ownable{
         emit PresaleCanceled(presale, canceled, block.timestamp);
     }
 
-    function tokensUnlocked(address presale, bool unlocked) onlyValidCaller external{
-        emit TokensUnlocked(presale, unlocked, block.timestamp);
+    function presaleFinalised(address presale) onlyValidCaller external{
+        emit PresaleFinalised(presale, block.timestamp);
     }
 
     //CONTROL FUNCTIONS

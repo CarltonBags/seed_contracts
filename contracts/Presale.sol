@@ -5,7 +5,7 @@ pragma solidity =0.8.28;
 // - check conditions for loops (i= 0 / 1)
 // - make function to move back presale start
 
-
+import "hardhat/console.sol";
 //import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
@@ -427,40 +427,45 @@ interface ID3Staking{
 
 interface IEventhandler{
     function lNFTCollectionCreated(address collection, address token, string calldata uri, address owner) external;
-    function lNFTBought(address buyer, address presale, uint amountTokens, uint amountETH) external;
-    function tokensBought(address buyer, address presale, address token, uint amount, uint amountETH, uint8 round) external;
+    function lNFTBought(address buyer, address presale, uint amountTokens, uint amountUSDC) external;
+    function tokensBought(address buyer, address presale, address token, uint amount, uint amountUSDC, uint8 round) external;
     function tokensWithdrawn(address buyer, address presale, address token, uint amount) external;
-    function userETHWithdrawal(address user, address presale, uint amountETH) external;
+    function userUSDCWithdrawal(address user, address presale, uint amountUSDC) external;
     function presaleCreated(address presale, address token, uint [] calldata params, address gatingToken) external;
-    function tokenDeployed(address token, string calldata name, string calldata symbol, address mintedTo, uint mintedAmount) external;
     function setNewCaller(address caller) external;
     function presaleMoved(address presale, uint delay) external;
     function presalePaused(address presale, bool paused) external;
     function presaleCanceled(address presale, bool canceled) external;
-    function tokensUnlocked(address presale, bool unlocked) external;
+    function presaleFinalised(address presale) external;
+}
+
+library PresaleFunctions{
+    //library to reduce contract size
+
+    
 }
 
 contract Presale is ERC1155 {
 
     mapping(address => bool) private admins;
-    mapping(uint => bool) public alreadyBought; //storing which of the holders of the d3 nft have bought.
+    mapping(uint => bool) private alreadyBought; //storing which of the holders of the d3 nft have bought.
     mapping(address => uint) public balances; //storing the withdrawable presale token balance of the user.
-    mapping(address => uint) public ETHBalances; //storing the amount of ETH deposited by users.
+    mapping(address => uint) public usdcBalances; //storing the amount of ETH deposited by users.
    
-    address private presaleMaster;
+    //address private presaleMaster;
     address private eventhandler;
     address public tokenAddress;
+    address private usdc;
+    address private nftAddress;
+    address private presaleMaster;
     uint public allocationSize;
-   
+    uint private softcap;
     uint public currentNFTSupply;
-    uint8 tokenId = 1;
 
     bool unlocked; //if true, tokens are withdrawable by buyers
-    bool canceled; //if true, users can withdraw their deposited ETH
-    bool presaleCreated; //if true, 
-
-    address nftAddress;
-
+    bool public canceled; //if true, users can withdraw their deposited ETH
+    bool finalised; //prevents calling the finalisePresale function twice
+    bool presaleCreated; //if true, presale cannot be created again
 
     struct Round1Params{
         uint start;
@@ -490,101 +495,60 @@ contract Presale is ERC1155 {
     Round2Params params2;
     Round3Params params3;
 
-    error PresaleNotLive();
-    error NotAuthorized();
-    error AlreadyBought();
-    error InsufficientFunds();
-    error NotEnoughAllocation();
-    error Locked();
-    error MaxWallet();
-    error ZeroValue();
-    error InvalidParam();
-    error InsufficientStake();
-
+    error Revert(string);
 
     function roundLive(uint start, uint end) private {
         if(block.timestamp <= start || block.timestamp >= end){
-            revert PresaleNotLive();
+            revert Revert("the round is not live");
         }
     }
 
-    function onlyAdmin() private {
-        if(!admins[msg.sender]){revert NotAuthorized();}
-        
+
+    modifier onlyAdmin(){
+        require(admins[_msgSender()] || _msgSender() == presaleMaster, "Not Authorized");
+        _;
     }
 
-    function onlyOwner() private {
-        if(msg.sender != presaleMaster){revert NotAuthorized();}
-        
-    }
-
-    constructor (address _presaleMaster, address _tokenAddress, string memory _uri, address _eventhandler, address _nftAddress) ERC1155(_uri){
-        presaleMaster = _presaleMaster;
+    constructor (address _presaleMaster, address _tokenAddress, string memory _uri, address _eventhandler, address _nftAddress, address _usdc) ERC1155(_uri){
         tokenAddress = _tokenAddress;
-        admins[_presaleMaster] = true;
         eventhandler = _eventhandler;
         nftAddress = _nftAddress;
+        usdc = _usdc;
+        presaleMaster = _presaleMaster;
     }
 
 
     //PRESALE ROUND 1 FUNCTIONS
-    /*function buySingleLNFT(uint d3ID) public nonReentrant payable{
-        round1live();
-        if(!presaleCreated){revert PresaleNotLive();}
-        if(pause){revert PresaleNotLive();}
-        if(canceled){revert PresaleNotLive();}
-        if(alreadyBought[d3ID]){revert AlreadyBought();}
-        address nftOwner = d3NFT.ownerOf(d3ID);
-        if(nftOwner != _msgSender()){revert NotAuthorized();}
-        if(params1.pricePerLNFT > msg.value){revert InsufficientFunds();}
-        
-        (bool success, ) = payable(address(this)).call{value: msg.value}("");
-        require(success,"ETH transfer failed");
-        ETHBalances[_msgSender()] = msg.value;
-        alreadyBought[d3ID] = true;
-        _mint(_msgSender(), tokenId, 1, "");
-
-        allocationSize -= params1.tokensPerLNFT;
-
-        ++currentNFTSupply;
-        if(currentNFTSupply > params1.maxNFTSupply){revert NotEnoughAllocation();}
-
-        IEventhandler(eventhandler).lNFTBought(_msgSender(), address(this), 1, msg.value);
-    }*/
-
-
-    function buyBatchLNFT(uint amount, uint [] calldata d3IDs) public payable{
+    function buyBatchLNFT(uint amount, uint [] calldata d3IDs) external{
         roundLive(params1.start, params1.end);
-        if(!presaleCreated){revert PresaleNotLive();}
-        if(canceled){revert PresaleNotLive();}
-        if(amount != d3IDs.length){revert InsufficientFunds();}
+        if(canceled){revert Revert("Presale canceled");}
+        if(amount != d3IDs.length){revert Revert("amount != input array length");}
         batchOwnershipCheck(d3IDs);
         batchAllocation(d3IDs);
         uint totalCost = amount * params1.pricePerLNFT;
-        if(totalCost > msg.value){revert InsufficientFunds();}
+       
+        if(totalCost > IERC20(usdc).balanceOf(_msgSender())){revert Revert("not enough USDC");}
 
-        (uint [] memory tokenIds, uint [] memory amounts) = _asSingletonArrays(tokenId, amount);
-        (bool success, ) = payable(address(this)).call{value: msg.value}("");
-        require(success,"ETH transfer failed");
-        ETHBalances[_msgSender()] = msg.value;
+        (uint [] memory tokenIds, uint [] memory amounts) = _asSingletonArrays(1, amount);
+        IERC20(usdc).transferFrom(_msgSender(), address(this), totalCost);
+        usdcBalances[_msgSender()] += totalCost;
         _mintBatch(_msgSender(), tokenIds, amounts, "");
 
         allocationSize -= params1.tokensPerLNFT * amount;
-
         currentNFTSupply += amount;
-        if(currentNFTSupply > params1.maxNFTSupply){revert NotEnoughAllocation();}
+        if(currentNFTSupply > params1.maxNFTSupply){revert Revert("not enough supply left");}
 
-        IEventhandler(eventhandler).lNFTBought(_msgSender(), address(this), amount, msg.value);
+        IEventhandler(eventhandler).lNFTBought(_msgSender(), address(this), amount, totalCost);
     }
 
-    function withdrawTokensRoundOne(uint amountLNFT) public {
-        if(!unlocked){revert Locked();}
-        uint balanceLNFT = balanceOf(_msgSender(), tokenId);
-        if(amountLNFT > balanceLNFT){revert InsufficientFunds();}
+    function withdrawTokensRoundOne(uint amountLNFT) external {
+        if(!unlocked){revert Revert("tokens are locked");}
+        uint balanceLNFT = balanceOf(_msgSender(), 1);
+        if(amountLNFT > balanceLNFT){revert Revert("amount exceeds your LNFT-balance");}
 
-        (uint [] memory tokenIds, uint [] memory amounts) = _asSingletonArrays(tokenId, amountLNFT);
+        (uint [] memory tokenIds, uint [] memory amounts) = _asSingletonArrays(1, amountLNFT);
         _burnBatch(_msgSender(), tokenIds, amounts);
-        uint amountERC20 = balanceLNFT * params1.tokensPerLNFT;
+        uint amountERC20 = amountLNFT * params1.tokensPerLNFT;
         IERC20(tokenAddress).transfer(_msgSender(), amountERC20);
 
         currentNFTSupply -= amountLNFT;
@@ -593,43 +557,46 @@ contract Presale is ERC1155 {
     }
     
 
-    function buyRoundTwoAndThree(uint amount, uint8 round) public payable {
-        if(round != 2 && round != 3){revert InvalidParam();}
+    function buyRoundTwoAndThree(uint amount, uint8 round) external {
+        if(round != 2 && round != 3){revert Revert("wrong round input");}
         presaleChecks(amount);
         uint totalCost;
         if(round == 2){
             roundLive(params2.start, params2.end);
-            if(amount > params2.maxWallet){revert MaxWallet();}
-            if(balances[_msgSender()] + amount > params2.maxWallet){revert MaxWallet();}
+            //if(amount > params2.maxWallet){revert Revert();}
+            if(balances[_msgSender()] + amount > params2.maxWallet){revert Revert("max wallet");}
             (uint balance, uint timestamp) = ID3Staking(params2.gatingToken).getStakingParams(_msgSender());
-            if(balance < params2.gatingBalance || timestamp > params1.start){revert InsufficientStake();}
-            totalCost = (amount * params2.pricePerToken)/(10**18);
-            if(totalCost > msg.value){revert InsufficientFunds();}
+            if(balance < params2.gatingBalance || timestamp > params1.start){revert Revert("invalid stake");}
+            //totalCost = (amount * params2.pricePerToken)/(10**18);
+            totalCost = ((amount / (10**18)) * (params2.pricePerToken / (10**6))) * 10**6;
+
+            if(totalCost > IERC20(usdc).balanceOf(_msgSender())){revert Revert("not enough USDC");}
 
         }
         if(round == 3){
             roundLive(params3.start, params3.end);
-            if(amount > params3.maxWallet){revert MaxWallet();}
-            if(balances[_msgSender()] + amount > params3.maxWallet){revert MaxWallet();}
-            totalCost = (amount * params3.pricePerToken)/(10**18);
-            if(totalCost > msg.value){revert InsufficientFunds();}
+            //if(amount > params3.maxWallet){revert Revert();}
+            if(balances[_msgSender()] + amount > params3.maxWallet){revert Revert("max wallet");}
+            //totalCost = (amount * params3.pricePerToken)/(10**18);
+            totalCost = ((amount / (10**18)) * (params3.pricePerToken / (10**6))) * 10**6;
+
+            if(totalCost > IERC20(usdc).balanceOf(_msgSender())){revert Revert("not enough USDC");}
         }
 
-        (bool success, ) = payable(address(this)).call{value: msg.value}("");
-        require(success,"ETH transfer failed");
-        ETHBalances[_msgSender()] = msg.value;
+        IERC20(usdc).transferFrom(_msgSender(), address(this), totalCost);
+        usdcBalances[_msgSender()] += totalCost;
 
         allocationSize -= amount;
         balances[_msgSender()] += amount;
 
-        IEventhandler(eventhandler).tokensBought(_msgSender(), address(this), tokenAddress, amount, msg.value, round);
+        IEventhandler(eventhandler).tokensBought(_msgSender(), address(this), tokenAddress, amount, totalCost, round);
     }
 
 
     function withdrawTokensRoundTwoAndThree(uint amount) external {
-        if(!unlocked){revert Locked();}
-        if(amount == 0){revert ZeroValue();}
-        if(balances[_msgSender()] < amount){revert InsufficientFunds();}
+        if(!unlocked){revert Revert("tokens are locked");}
+        if(amount == 0){revert Revert("entered amount 0");}
+        if(balances[_msgSender()] < amount){revert Revert("insufficient presale balance");}
 
         balances[_msgSender()] -= amount;
         IERC20(tokenAddress).transfer(_msgSender(), amount);
@@ -637,68 +604,18 @@ contract Presale is ERC1155 {
         IEventhandler(eventhandler).tokensWithdrawn(_msgSender(), address(this), tokenAddress, amount);
     }
 
-    //HELPER FUNCTIONS
-    function batchOwnershipCheck(uint [] memory d3IDs) private{
-        for(uint i = 0; i < d3IDs.length; i++){
-            uint id = d3IDs[i];
-            address holder = IERC721(nftAddress).ownerOf(id);
-            if(_msgSender() != holder){revert InsufficientFunds();}
-        }
+
+    //WITHDRAW USDC AFTER CANCELED PRESALE
+   function userUSDCWithdrawal() external{
+        if(!canceled){revert Revert("presale was not canceled");}
+        uint userUSDCBalance = usdcBalances[_msgSender()];
+        usdcBalances[_msgSender()] -= userUSDCBalance;
+        IERC20(usdc).transfer(_msgSender(), userUSDCBalance);
+
+        IEventhandler(eventhandler).userUSDCWithdrawal(_msgSender(), address(this), userUSDCBalance);
     }
 
-    function presaleChecks(uint amount) internal {
-        if(!presaleCreated){revert PresaleNotLive();}
-        if(canceled){revert PresaleNotLive();}
-        if(amount > allocationSize){revert NotEnoughAllocation();}
-    }
-    
-
-    /*function ownershipCheck(uint d3ID) public view returns (address) {
-        address holder = IERC721(nftAddress).ownerOf(d3ID);
-        if(_msgSender() != holder){revert InsufficientFunds();}
-
-    }*/
-
-    function batchAllocation(uint [] memory d3IDs) private {
-        for(uint i = 0; i < d3IDs.length; i++){
-            uint id = d3IDs[i];
-            if(alreadyBought[id]){
-                revert AlreadyBought();
-            }
-            else{
-                alreadyBought[id] = true;
-            }
-        }
-    }
-
-    //WITHDRAW ETH AFTER CANCELED PRESALE
-   function userETHWithdrawal() external payable{
-        if(canceled){
-            uint userETHBalance = ETHBalances[_msgSender()];
-            ETHBalances[_msgSender()] -= userETHBalance;
-            (bool success, ) = payable(_msgSender()).call{value: userETHBalance}("");
-            require(success, "ETH transfer failed");
-        }
-
-        IEventhandler(eventhandler).userETHWithdrawal(_msgSender(), address(this), msg.value);
-    }
-
-
-    //OWNER FUNCTIONS
-    function setAdmin(address admin, bool newStatus) external{
-        onlyOwner();
-        admins[admin] = newStatus;
-    }
-
-    function withdrawETH(uint256 amountETH) external {
-        onlyOwner();
-        if(address(this).balance < amountETH){revert InsufficientFunds();}
-        (bool success, ) = payable(_msgSender()).call{value: amountETH}("");
-        require(success, "withdrawal failed");
-    }
-
-
-
+  
     //ADMIN FUNCTIONS
 
     /*
@@ -718,18 +635,20 @@ contract Presale is ERC1155 {
         12: end round 3
         13: price Per Token round 3
         14: max Wallet round 3
+        15: softcap
     
     */
 
-    function createPresale(uint [] memory params, address _gatingToken) external  {
-        onlyAdmin();
-        if(params[0] <= block.timestamp){revert InvalidParam();}
-        if(params[1] <= block.timestamp || params[1] <= params[0]){revert InvalidParam();}
-        if(params[1] >= params[4]){revert InvalidParam();}
-        if(params[4] >= params[5]){revert InvalidParam();}
-        if(params[5] >= params[11]){revert InvalidParam();}
-        if(params[11] >= params[12]){revert InvalidParam();}
-        if(params[2] == 0 || params[3] == 0 || params[6] == 0 || params[7] == 0 || params[8] == 0 || params[9] == 0 || params[10] == 0 || params[11] == 0 || params[12] == 0 || params[13] == 0 || params[14] == 0){revert ZeroValue();}
+    function createPresale(uint [] memory params, address _gatingToken) external onlyAdmin {
+        if(presaleCreated){revert Revert("presale already created");}
+        if(params[0] <= block.timestamp){revert Revert("presale cannot start in the past");}
+        if(params[1] <= block.timestamp || params[1] <= params[0]){revert Revert("round 1 end cannot be before start");}
+        if(params[1] >= params[4]){revert Revert("round 2 start cannot be before round 1 end");}
+        if(params[4] >= params[5]){revert Revert("round 2 end cannot be before start");}
+        if(params[5] >= params[11]){revert Revert("round 3 start cannot be before round 2 end");}
+        if(params[11] >= params[12]){revert Revert("round 3 end cannot be before start");}
+        if(params[3] * params[10] > params[9]){revert Revert("max LNFT supply * tokens per LNFT > allocationSize");}
+        if(params[2] == 0 || params[3] == 0 || params[6] == 0 || params[7] == 0 || params[8] == 0 || params[9] == 0 || params[10] == 0 || params[11] == 0 || params[12] == 0 || params[13] == 0 || params[14] == 0 || params[15] == 0){revert Revert("input cannot be 0");}
 
         params1.start = params[0];
         params1.end = params[1];
@@ -750,6 +669,7 @@ contract Presale is ERC1155 {
         params3.maxWallet = params[14];
 
         allocationSize = params[9];
+        softcap=params[15];
 
         IERC20(tokenAddress).transferFrom(msg.sender, address(this), params[9]);
         presaleCreated = true;
@@ -757,9 +677,8 @@ contract Presale is ERC1155 {
         IEventhandler(eventhandler).presaleCreated(address(this), tokenAddress, params, _gatingToken);
     }
 
-    function movePresale(uint delay) external {
-        onlyAdmin();
-        if(block.timestamp >= params1.start){revert NotAuthorized();}
+    function movePresale(uint delay) external onlyAdmin{
+        if(block.timestamp >= params1.start){revert Revert("presale already started");}
         params1.start += delay;
         params1.end += delay;
         params2.start += delay;
@@ -770,32 +689,94 @@ contract Presale is ERC1155 {
         IEventhandler(eventhandler).presaleMoved(address(this), delay);
     }
 
+    function finalisePresale() external onlyAdmin returns(bool){
+        if(block.timestamp < params3.end){revert Revert("presale has not ended");}
+        if(canceled){revert Revert("presale has been canceled");}
+        if(block.timestamp > params3.end && IERC20(usdc).balanceOf(address(this)) > softcap){
+            unlocked = true;
+            finalised = true;
+            return finalised;
+        }
+        if(block.timestamp > params3.end && IERC20(usdc).balanceOf(address(this)) < softcap){
+            canceled = true;
+            finalised = true;
+            return finalised;
+        }
 
-    function releaseTokens(bool _unlocked) external {
-        onlyAdmin();
-        if(block.timestamp < params3.end){revert NotAuthorized();}
-        unlocked = _unlocked;
+        return finalised;
 
-        IEventhandler(eventhandler).tokensUnlocked(address(this), _unlocked);
+
+        IEventhandler(eventhandler).presaleFinalised(address(this));
     }
 
-    function cancelPresale(bool _canceled) external {
-        onlyAdmin();
-        canceled = _canceled;
+    function cancelPresale() external onlyAdmin{
+        if(unlocked){revert Revert("tokens are already unlocked");}
+        canceled = true;
 
-        IEventhandler(eventhandler).presaleCanceled(address(this), _canceled);
+        IEventhandler(eventhandler).presaleCanceled(address(this), canceled);
     }
 
-    function withdrawRemainingTokens(uint amount) external {
-        onlyAdmin();
-        if(block.timestamp < params3.end){revert Locked();}
-        if(amount > allocationSize){revert NotEnoughAllocation();}
-        IERC20(tokenAddress).transfer(_msgSender(), amount);
+    function withdrawRemainingTokens(uint amount) external onlyAdmin{
+        if(canceled){
+            if(amount > IERC20(tokenAddress).balanceOf(address(this))){revert Revert("not enough tokens left");}
+            IERC20(tokenAddress).transfer(_msgSender(), amount);
+            if(amount > allocationSize){
+                allocationSize = 0;
+            }
+            if(amount <= allocationSize){
+                allocationSize -= amount;
+            }
+        }
+        if(unlocked){
+            if(amount > allocationSize){revert Revert("not enough tokens left");}
+            IERC20(tokenAddress).transfer(_msgSender(), amount);
+            allocationSize -= amount;
+
+        }
     }
+
+    function setAdmin(address admin, bool newStatus) external onlyAdmin{
+        admins[admin] = newStatus;
+    }
+
+    function withdrawUSDC(uint256 amount) external onlyAdmin{
+        if(block.timestamp < params3.end){revert Revert("presale has not ended yet");}
+        if(!unlocked){revert Revert("tokens are not locked");}
+        if(IERC20(usdc).balanceOf(address(this)) < amount){revert Revert("amount exceed contract USDC balance");}
+        IERC20(usdc).transfer(_msgSender(), amount);
+    }
+
+    //HELPER FUNCTIONS
+    function batchOwnershipCheck(uint [] memory d3IDs) private{
+        for(uint i = 0; i < d3IDs.length; i++){
+            uint id = d3IDs[i];
+            address holder = IERC721(nftAddress).ownerOf(id);
+            if(_msgSender() != holder){revert Revert("not the owner");}
+        }
+    }
+
+    function presaleChecks(uint amount) private {
+        if(canceled){revert Revert("presale is canceled");}
+        if(amount > allocationSize){revert Revert("amount exceeds allocationSize");}
+    }
+    
+
+    function batchAllocation(uint [] memory d3IDs) private {
+        for(uint i = 0; i < d3IDs.length; i++){
+            uint id = d3IDs[i];
+            if(alreadyBought[id]){
+                revert Revert("already bought with this ID");
+            }
+            else{
+                alreadyBought[id] = true;
+            }
+        }
+    }
+
+  
 
     fallback()external payable{}
     receive()external payable{}
     
-
 
 }

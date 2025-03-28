@@ -4,37 +4,41 @@ pragma solidity =0.8.28;
 import "./Presale.sol";
 
 
-
-
 contract PresaleFactory {
 
     address owner;
     address [] public Presales;
     address eventhandler;
     address nftAddress;
-    bool private active;
+    address usdc;
 
-    error Inactive();
     error InvalidParam();
     error Unauthorized();
 
 
-    constructor(address _eventhandler, address _nftAddress) {
+    constructor(address _eventhandler, address _nftAddress, address _owner, address _usdc) {
+        if(_eventhandler == address(0)){revert InvalidParam();}
+        if(_owner == address(0)){revert InvalidParam();}
+        if(_nftAddress == address(0)){revert InvalidParam();}
+        if(_usdc == address(0)){revert InvalidParam();}
+
         eventhandler = _eventhandler;
-        owner = msg.sender;
+        owner = _owner;
         nftAddress = _nftAddress;
+        usdc = _usdc;
     }
 
     function deployPresale(address _tokenAddress, string memory _uri) external {
         if (msg.sender != owner){revert Unauthorized();}
-        if(!active){revert Inactive();}
         if(_tokenAddress == address(0)){revert InvalidParam();}
+
         address presale = address(new Presale(
             msg.sender,
             _tokenAddress,
             _uri,
             eventhandler,
-            nftAddress
+            nftAddress,
+            usdc
         ));
 
         Presales.push(presale);
@@ -43,10 +47,9 @@ contract PresaleFactory {
         IEventhandler(eventhandler).setNewCaller(presale);
     }
 
-    function setActive(bool _active) external {
-        if (msg.sender != owner){revert Unauthorized();}
-        active = _active;
+    function changeOwner(address newOwner) external{
+        require(msg.sender == owner, "not the owner");
+        owner = newOwner;
     }
-
 
 }
