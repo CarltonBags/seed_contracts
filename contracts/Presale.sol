@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.28;
+pragma solidity ^0.8.28;
 
 //TO DOs
 // - check conditions for loops (i= 0 / 1)
 // - make function to move back presale start
 
 import "hardhat/console.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 //import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import "@openzeppelin/contracts/utils/introspection/ERC165.sol";
@@ -418,7 +419,7 @@ interface IERC20{
     function balanceOf(address account) external view returns (uint256);
     function transfer(address to, uint256 value) external returns (bool);
     function transferFrom(address from, address to, uint256 value) external returns (bool);
-
+    function decimals() external view returns (uint8);
 }
 
 interface ID3Staking{
@@ -439,13 +440,8 @@ interface IEventhandler{
     function presaleFinalised(address presale) external;
 }
 
-library PresaleFunctions{
-    //library to reduce contract size
 
-    
-}
-
-contract Presale is ERC1155 {
+contract Presale is ERC1155, ReentrancyGuard {
 
     mapping(address => bool) private admins;
     mapping(uint => bool) private alreadyBought; //storing which of the holders of the d3 nft have bought.
@@ -455,6 +451,7 @@ contract Presale is ERC1155 {
     //address private presaleMaster;
     address private eventhandler;
     address public tokenAddress;
+    uint8 tokenDecimals;
     address private usdc;
     address private nftAddress;
     address private presaleMaster;
@@ -462,7 +459,7 @@ contract Presale is ERC1155 {
     uint private softcap;
     uint public currentNFTSupply;
 
-    bool unlocked; //if true, tokens are withdrawable by buyers
+    bool public unlocked; //if true, tokens are withdrawable by buyers
     bool public canceled; //if true, users can withdraw their deposited ETH
     bool finalised; //prevents calling the finalisePresale function twice
     bool presaleCreated; //if true, presale cannot be created again
@@ -515,11 +512,12 @@ contract Presale is ERC1155 {
         nftAddress = _nftAddress;
         usdc = _usdc;
         presaleMaster = _presaleMaster;
+        tokenDecimals = IERC20(_tokenAddress).decimals();
     }
 
 
     //PRESALE ROUND 1 FUNCTIONS
-    function buyBatchLNFT(uint amount, uint [] calldata d3IDs) external{
+    function buyBatchLNFT(uint amount, uint [] calldata d3IDs) external nonReentrant{
         roundLive(params1.start, params1.end);
         if(canceled){revert Revert("Presale canceled");}
         if(amount != d3IDs.length){revert Revert("amount != input array length");}
@@ -541,7 +539,7 @@ contract Presale is ERC1155 {
         IEventhandler(eventhandler).lNFTBought(_msgSender(), address(this), amount, totalCost);
     }
 
-    function withdrawTokensRoundOne(uint amountLNFT) external {
+    function withdrawTokensRoundOne(uint amountLNFT) external nonReentrant{
         if(!unlocked){revert Revert("tokens are locked");}
         uint balanceLNFT = balanceOf(_msgSender(), 1);
         if(amountLNFT > balanceLNFT){revert Revert("amount exceeds your LNFT-balance");}
@@ -557,7 +555,7 @@ contract Presale is ERC1155 {
     }
     
 
-    function buyRoundTwoAndThree(uint amount, uint8 round) external {
+    function buyRoundTwoAndThree(uint amount, uint8 round) external nonReentrant{
         if(round != 2 && round != 3){revert Revert("wrong round input");}
         presaleChecks(amount);
         uint totalCost;
@@ -568,7 +566,7 @@ contract Presale is ERC1155 {
             (uint balance, uint timestamp) = ID3Staking(params2.gatingToken).getStakingParams(_msgSender());
             if(balance < params2.gatingBalance || timestamp > params1.start){revert Revert("invalid stake");}
             //totalCost = (amount * params2.pricePerToken)/(10**18);
-            totalCost = ((amount / (10**18)) * (params2.pricePerToken / (10**6))) * 10**6;
+            totalCost = (amount * params2.pricePerToken) / 10**tokenDecimals;
 
             if(totalCost > IERC20(usdc).balanceOf(_msgSender())){revert Revert("not enough USDC");}
 
@@ -578,7 +576,7 @@ contract Presale is ERC1155 {
             //if(amount > params3.maxWallet){revert Revert();}
             if(balances[_msgSender()] + amount > params3.maxWallet){revert Revert("max wallet");}
             //totalCost = (amount * params3.pricePerToken)/(10**18);
-            totalCost = ((amount / (10**18)) * (params3.pricePerToken / (10**6))) * 10**6;
+            totalCost = (amount * params3.pricePerToken) / 10**tokenDecimals;
 
             if(totalCost > IERC20(usdc).balanceOf(_msgSender())){revert Revert("not enough USDC");}
         }
@@ -593,8 +591,9 @@ contract Presale is ERC1155 {
     }
 
 
-    function withdrawTokensRoundTwoAndThree(uint amount) external {
+    function withdrawTokensRoundTwoAndThree(uint amount) external nonReentrant{
         if(!unlocked){revert Revert("tokens are locked");}
+        if(canceled){revert Revert("presale canceled");}
         if(amount == 0){revert Revert("entered amount 0");}
         if(balances[_msgSender()] < amount){revert Revert("insufficient presale balance");}
 
@@ -606,7 +605,7 @@ contract Presale is ERC1155 {
 
 
     //WITHDRAW USDC AFTER CANCELED PRESALE
-   function userUSDCWithdrawal() external{
+   function userUSDCWithdrawal() external nonReentrant{
         if(!canceled){revert Revert("presale was not canceled");}
         uint userUSDCBalance = usdcBalances[_msgSender()];
         usdcBalances[_msgSender()] -= userUSDCBalance;
@@ -636,7 +635,6 @@ contract Presale is ERC1155 {
         13: price Per Token round 3
         14: max Wallet round 3
         15: softcap
-    
     */
 
     function createPresale(uint [] memory params, address _gatingToken) external onlyAdmin {
@@ -648,6 +646,7 @@ contract Presale is ERC1155 {
         if(params[5] >= params[11]){revert Revert("round 3 start cannot be before round 2 end");}
         if(params[11] >= params[12]){revert Revert("round 3 end cannot be before start");}
         if(params[3] * params[10] > params[9]){revert Revert("max LNFT supply * tokens per LNFT > allocationSize");}
+        if(params[15] > params[9] * params[13]){revert Revert("softcap must be less than allocationSize * pricePerToken");}
         if(params[2] == 0 || params[3] == 0 || params[6] == 0 || params[7] == 0 || params[8] == 0 || params[9] == 0 || params[10] == 0 || params[11] == 0 || params[12] == 0 || params[13] == 0 || params[14] == 0 || params[15] == 0){revert Revert("input cannot be 0");}
 
         params1.start = params[0];
@@ -692,7 +691,7 @@ contract Presale is ERC1155 {
     function finalisePresale() external onlyAdmin returns(bool){
         if(block.timestamp < params3.end){revert Revert("presale has not ended");}
         if(canceled){revert Revert("presale has been canceled");}
-        if(block.timestamp > params3.end && IERC20(usdc).balanceOf(address(this)) > softcap){
+        if(block.timestamp >= params3.end && IERC20(usdc).balanceOf(address(this)) > softcap){
             unlocked = true;
             finalised = true;
             return finalised;
@@ -702,9 +701,6 @@ contract Presale is ERC1155 {
             finalised = true;
             return finalised;
         }
-
-        return finalised;
-
 
         IEventhandler(eventhandler).presaleFinalised(address(this));
     }

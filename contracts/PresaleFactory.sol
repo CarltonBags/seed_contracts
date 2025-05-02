@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.28;
+pragma solidity ^0.8.28;
 
 import "./Presale.sol";
 
@@ -12,15 +12,15 @@ contract PresaleFactory {
     address nftAddress;
     address usdc;
 
-    error InvalidParam();
-    error Unauthorized();
+    error InvalidParam(string);
+    error Unauthorized(string);
 
 
     constructor(address _eventhandler, address _nftAddress, address _owner, address _usdc) {
-        if(_eventhandler == address(0)){revert InvalidParam();}
-        if(_owner == address(0)){revert InvalidParam();}
-        if(_nftAddress == address(0)){revert InvalidParam();}
-        if(_usdc == address(0)){revert InvalidParam();}
+        if(_eventhandler == address(0)){revert InvalidParam("eventhandler is zero");}
+        if(_owner == address(0)){revert InvalidParam("owner is zero");}
+        if(_nftAddress == address(0)){revert InvalidParam("nft address is zero");}
+        if(_usdc == address(0)){revert InvalidParam("usdc address is zero");}
 
         eventhandler = _eventhandler;
         owner = _owner;
@@ -29,8 +29,8 @@ contract PresaleFactory {
     }
 
     function deployPresale(address _tokenAddress, string memory _uri) external {
-        if (msg.sender != owner){revert Unauthorized();}
-        if(_tokenAddress == address(0)){revert InvalidParam();}
+        if (msg.sender != owner){revert Unauthorized("not the owner");}
+        if(_tokenAddress == address(0)){revert InvalidParam("token address is zero");}
 
         address presale = address(new Presale(
             msg.sender,

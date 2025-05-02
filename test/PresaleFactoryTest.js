@@ -31,8 +31,35 @@ describe("PresaleFactory", function() {
         const presaleFactory = await PresaleFactory.deploy(eAddress, nftContractAddress, sexy.address, eAddress);
         const pAddress = await presaleFactory.getAddress();
 
-        //set presale factory as valid caller to eventhandler
         const sexyConnectEventhandler = eventhandler.connect(sexy)
+
+         //deploy token factory
+         const TokenFactory = await ethers.getContractFactory("TokenFactory");
+         const tokenFactory = await TokenFactory.deploy(eAddress);
+         const tokenFactoryAddress = await tokenFactory.getAddress();
+         await sexyConnectEventhandler.setNewFactory(tokenFactoryAddress, true);
+         const sexyConnectTokenFactory = tokenFactory.connect(sexy);
+         await sexyConnectTokenFactory.setActive(true)
+ 
+         
+         //deploy Presale token
+         const amount = ethers.parseEther("300000000");
+         const userAmount = ethers.parseEther("100000")
+         const tokenDeployment = await sexyConnectTokenFactory.deployERC20("PRESALE","$PRESALE", amount)
+         const receipt = await tokenDeployment.wait();
+         const eventFilter = eventhandler.filters.TokenDeployed();
+         const events = await eventhandler.queryFilter(eventFilter, receipt.blockNumber, receipt.blockNumber)
+         expect(events.length).to.be.above(0)
+ 
+         let tokenAddress
+ 
+             if (events.length > 0){
+                 tokenAddress = events[0].args.token
+                 console.log("tokenAddress", tokenAddress)
+             }
+         
+
+        //set presale factory as valid caller to eventhandler
         const addCaller = await sexyConnectEventhandler.setNewFactory(pAddress, true);
 
         const sexyConnectFactory = presaleFactory.connect(sexy);
@@ -40,7 +67,7 @@ describe("PresaleFactory", function() {
         const zeroAddress ="0x0000000000000000000000000000000000000000"
 
         
-        return { sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, userConnectFactory, zeroAddress };
+        return {tokenAddress, sexy, admin, user, eventhandler, presaleFactory, sexyConnectFactory, userConnectFactory, zeroAddress };
     }
 
     beforeEach(async function(){
@@ -49,15 +76,13 @@ describe("PresaleFactory", function() {
 
     describe("Basic Functions", function(){
         it("should allow the admin to deploy a presale contract", async function(){
-            const {sexy, sexyConnectFactory, tAddress, presaleParams} = context;
-            const tokenAddress = "0xcfeb09c3c5f0f78ad72166d55f9e6e9a60e96eec";
+            const {sexy, sexyConnectFactory, tAddress, presaleParams,tokenAddress} = context;
 
             await expect(sexyConnectFactory.deployPresale(tokenAddress, "")).to.not.be.reverted
 
         })
         it("should revert when a tokenAddress is the zero address", async function(){
-            const {sexy, sexyConnectFactory, tAddress, presaleParams, zeroAddress} = context;
-            const tokenAddress = "0xcfeb09c3c5f0f78ad72166d55f9e6e9a60e96eec";
+            const {sexy, sexyConnectFactory, tAddress, presaleParams, zeroAddress,tokenAddress} = context;
 
             await expect(sexyConnectFactory.deployPresale(zeroAddress, "")).to.be.reverted
 

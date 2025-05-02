@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.28;
+pragma solidity ^0.8.28;
 
 import "./CustomERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -46,6 +46,7 @@ contract TokenFactory is Ownable{
     function setActive(bool _active) external onlyOwner{
         active = _active;
     }
+
 
     function receive() public{}
     function fallback()public{}

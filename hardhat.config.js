@@ -57,11 +57,11 @@ module.exports = {
       url: process.env.SEPOLIA_ENDPOINT,
       accounts: [process.env.PRIVATE_KEY]
     },*/
-    /*
+    
     bsc_testnet:{
-      url: "https://bsc-prebsc-dataseed.bnbchain.org",
+      url: "https://bsc-testnet-rpc.publicnode.com",
       accounts: [process.env.PRIVATE_KEY_1]
-    }*/
+    }
     
   },
   gasReporter:{

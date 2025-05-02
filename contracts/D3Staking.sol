@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity =0.8.28;
+pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "hardhat/console.sol";
@@ -32,7 +32,7 @@ interface ID3Staking{
 contract D3Staking is ID3Staking, Context{
 
 
-    address tokenAddress;
+    address public tokenAddress;
     
     struct StakingParams{
         uint balance;
@@ -128,7 +128,7 @@ contract D3Staking is ID3Staking, Context{
 
     function mint(uint amount) external {
         uint balance = IERC20(tokenAddress).balanceOf(_msgSender());
-        if(balance < amount){revert InsufficientStake(amount, balance);}
+        if(balance < amount){revert InsufficientFunds();}
         if(amount == 0){revert ERC20InvalidAmount();}
 
         _totalSupply += amount;
@@ -149,6 +149,10 @@ contract D3Staking is ID3Staking, Context{
 
     function getStakingParams(address staker) external view returns (uint balance, uint timestamp){
         return(_balances[staker].balance, _balances[staker].timestamp);
+    }
+
+    function getTokenAddress() external view returns (address){
+        return tokenAddress;
     }
 
 
