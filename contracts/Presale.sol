@@ -569,11 +569,9 @@ contract Presale is ERC1155, ReentrancyGuard {
         uint totalCost;
         if(round == 2){
             roundLive(params2.start, params2.end);
-            //if(amount > params2.maxWallet){revert Revert();}
             if(balances[_msgSender()] + amount > params2.maxWallet){revert Revert("max wallet");}
             (uint balance, uint timestamp) = ID3Staking(params2.gatingToken).getStakingParams(_msgSender());
             if(balance < params2.gatingBalance || timestamp > params1.start){revert Revert("invalid stake");}
-            //totalCost = (amount * params2.pricePerToken)/(10**18);
             totalCost = (amount * params2.pricePerToken) / 10**tokenDecimals;
 
             if(totalCost > IERC20(usdc).balanceOf(_msgSender())){revert Revert("not enough USDC");}
@@ -581,9 +579,7 @@ contract Presale is ERC1155, ReentrancyGuard {
         }
         if(round == 3){
             roundLive(params3.start, params3.end);
-            //if(amount > params3.maxWallet){revert Revert();}
             if(balances[_msgSender()] + amount > params3.maxWallet){revert Revert("max wallet");}
-            //totalCost = (amount * params3.pricePerToken)/(10**18);
             totalCost = (amount * params3.pricePerToken) / 10**tokenDecimals;
 
             if(totalCost > IERC20(usdc).balanceOf(_msgSender())){revert Revert("not enough USDC");}
@@ -764,7 +760,7 @@ contract Presale is ERC1155, ReentrancyGuard {
         if(amount > allocationSize){revert Revert("amount exceeds allocationSize");}
     }
     
-
+    //assigns allocations to D3 NFTs to ensure no one can buy twice with the same NFT
     function batchAllocation(uint [] memory d3IDs) private {
         for(uint i = 0; i < d3IDs.length; i++){
             uint id = d3IDs[i];
