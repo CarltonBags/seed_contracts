@@ -3,21 +3,21 @@ The Smart contracts in this repository are designed to create regular ERC20 Toke
 
 
 
-**Eventhandler**
+**Eventhandler**:
 this contract is simply there to pick up all relevant events emitted by the presale-factory, the token-factory and the individual presales.
 
 
-**TokenFactory**
+**TokenFactory**:
 Allows the owner of the factory to mint regular ERC20 Tokens that have no owner functions and emits a creation event through the Eventhandler.
 
-**D3Staking**
+**D3Staking**:
 The Staking Contract that allows users to stake a specific Token (set by the Deployer) that tracks staking balances of the users which is needed later for the presale.
 
-**PresaleFactory**
+**PresaleFactory**:
 Allows the owner of the factory to create new Presale contracts. 
 
 
-**Presale**
+**Presale**:
 The core of the protocol. The Presale contract is designed to allow the admin of the contract to create a presale of a regular ERC20 token in a centralized way. The presales are set to function in the following way:
 
 - Round 1: NFT Round
