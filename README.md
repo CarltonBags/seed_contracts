@@ -30,3 +30,6 @@ The core of the protocol. The Presale contract is designed to allow the admin of
 -- The remaining allocation is sold publicly with the only restriction being a max balance per wallet.
 
 
+**Explainer:
+The Presale contract inherits from ERC-1155, because the presale mechanism for Round 1 requires the contract to mint NFTs to the user and also burn them when the users withdraw the tokens. The NFTs are just receipts for the user buying in Round 1. The other NFT collection involved here is the ERC-721 collection (D3NFT). These are used to verify if a user is eligible to buy in Round 1. They are an entry requirement.
+
