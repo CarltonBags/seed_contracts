@@ -23,8 +23,13 @@ const main = {
             presaleFactory:"0xd56BB7624912c455656aE602E36f6Ca5e8B7F167",
             mock_usdc:"0x65795e821e0EeAaaDa4843c3C0b390b754AC9ff8",
             spadToken:"0x772AC8780eE9d7Fd85562F6766e34Cd246b743a0",
-            d3Staking:"0x1851a91097AA3219c506Bb8Fa462abb773bbADEc"//xSPAD
+            d3Staking:"0x270415cF2486cDc1EB04E8A6D69Dd63A74939799"//xSPAD
         },
+        base:{
+            eventhandler:"",
+            tokenFactory:"",
+            
+        }
 
     },
 
@@ -222,7 +227,7 @@ const main = {
         async () => {
             const privateKey = process.env.PRIVATE_KEY_1
             const wallet = new ethers.Wallet(privateKey, ethers.provider)
-            const TokenFactory = await ethers.getContractAt("TokenFactory", "0xE82a368F1d7b66B3f484Fe75E520019473321Ba4");
+            const TokenFactory = await ethers.getContractAt("TokenFactory", "0xac43d5B8115b9C98985F5ac7Fad93cfa27FE8563");
             const bigD="0xDDD03b35AFB5B27a2911f9004745A83A09C671A7"
             const tx = await TokenFactory.connect(wallet).transferOwnership(bigD)
             console.log("tx",tx)
@@ -298,15 +303,20 @@ const main = {
             const wallet = new ethers.Wallet(privateKey, ethers.provider)
             const d3StakingAddress = "0x1851a91097AA3219c506Bb8Fa462abb773bbADEc"
 
-            const amount = ethers.parseEther("100000")
+            const amount = ethers.parseEther("300000")
             const token = await ethers.getContractAt("CustomERC20", "0x772AC8780eE9d7Fd85562F6766e34Cd246b743a0")
             const walletConnectToken = token.connect(wallet)
 
             const tx1 = await walletConnectToken.approve(d3StakingAddress, amount)
             console.log("tx1",tx1)    
             await delay(4000)
+
+            const allowanceOfToken = await walletConnectToken.allowance("0x062dc81A61b8C5fBA95c0c5d158fA6D41e0061Eb", "0x1851a91097AA3219c506Bb8Fa462abb773bbADEc")
+            console.log("allowanceOfToken",allowanceOfToken)
+            await delay(4000)
             const d3Staking = await ethers.getContractAt("D3Staking", "0x1851a91097AA3219c506Bb8Fa462abb773bbADEc")
             const walletConnectD3Staking = d3Staking.connect(wallet)
+
 
             const tx2 = await walletConnectD3Staking.mint(amount)
             console.log("tx2",tx2)
@@ -334,7 +344,11 @@ const main = {
             const walletConnectD3Staking = d3Staking.connect(wallet)
             
             const balanceOfToken = await walletConnectToken.balanceOf("0x1851a91097AA3219c506Bb8Fa462abb773bbADEc")
-            console.log("balanceOfToken",balanceOfToken)
+            console.log("balanceOfToken",ethers.formatEther(balanceOfToken))
+            await delay(4000)
+
+            const balanceOfUser = await walletConnectD3Staking.balanceOf(wallet.address)
+            console.log("balanceOfUser",ethers.formatEther(balanceOfUser))
             await delay(4000)
 
 
@@ -345,6 +359,72 @@ const main = {
 
             const tx3 = await walletConnectD3Staking.burn(amount)
             console.log("tx3",tx3)
+            await delay(4000)
+            
+        },
+    getSPADAllowance:
+        async () => {
+            const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+            const privateKey = process.env.PRIVATE_KEY_1
+            const wallet = new ethers.Wallet(privateKey, ethers.provider)
+            const d3StakingAddress = "0x1851a91097AA3219c506Bb8Fa462abb773bbADEc"
+
+            const amount = ethers.parseEther("300000")
+            const token = await ethers.getContractAt("CustomERC20", "0x772AC8780eE9d7Fd85562F6766e34Cd246b743a0")
+            const walletConnectToken = token.connect(wallet)
+
+            /*const tx1 = await walletConnectToken.approve(d3StakingAddress, "0")
+            await delay(4000)*/
+/*
+            const allowanceOfTokenBefore = await walletConnectToken.allowance("0x062dc81A61b8C5fBA95c0c5d158fA6D41e0061Eb", "0x1851a91097AA3219c506Bb8Fa462abb773bbADEc")
+            console.log("allowanceOfTokenBefore",ethers.formatEther(allowanceOfTokenBefore))
+            await delay(4000)
+
+            const tx3 = await walletConnectToken.approve(d3StakingAddress, amount)
+            console.log("tx3",tx3)    
+            await delay(4000)*/
+
+            const allowanceOfTokenAfter = await walletConnectToken.allowance("0x062dc81A61b8C5fBA95c0c5d158fA6D41e0061Eb", "0xBFD31526C6fbDEa2390D2dE6E3599C647df105D9")
+            console.log("allowanceOfTokenAfter",ethers.formatEther(allowanceOfTokenAfter))
+            await delay(4000)
+
+
+        },
+    deployTokenFactoryAndEventhandler:
+        async () => {
+            const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+            const privateKey = process.env.PRIVATE_KEY_1
+            const wallet = new ethers.Wallet(privateKey, ethers.provider)
+
+            const Eventhandler = await ethers.getContractFactory("Eventhandler", wallet);
+            const eventhandler = await Eventhandler.deploy();
+            await eventhandler.deploymentTransaction().wait()
+            const eAddress= await eventhandler.getAddress();
+
+            console.log("Eventhandler contract address", eAddress)
+            await delay(2000); // wait 1 second
+
+            const TokenFactory = await ethers.getContractFactory("TokenFactory", wallet);
+            const tokenFactory = await TokenFactory.deploy(eAddress,{gasLimit:2000000});
+            await tokenFactory.deploymentTransaction().wait()
+            const tokenFactoryAddress = await tokenFactory.getAddress();
+
+            console.log("token factory address", tokenFactoryAddress)
+            await delay(2000); // wait 1 second
+
+            const newFactory = await eventhandler.connect(wallet).setNewFactory(tokenFactoryAddress, true);
+            await newFactory.wait()
+
+            await delay(2000); // wait 1 second
+
+            const setActive = await tokenFactory.connect(wallet).setActive(true)
+            await setActive.wait()
+
+            console.log("token factory active")
+
+
             
             
         }
@@ -357,11 +437,13 @@ const main = {
 //main.setActive();
 //main.getNFTs()
 //main.deployPresaleFactory()
-//main.changeTokenFactoryOwner()
+main.changeTokenFactoryOwner()
 //main.changePresaleFactoryOwner()
 //main.mintRandomToken()
 //main.setActive()
 //main.getUSDCBalance()
 //main.deployStakingContract()
 //main.testStake()
-main.testBurn()
+//main.testBurn()
+//main.getSPADAllowance()
+//main.deployTokenFactoryAndEventhandler()

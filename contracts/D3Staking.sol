@@ -31,9 +31,10 @@ interface ID3Staking{
 
 contract D3Staking is ID3Staking, Context{
 
-
+    //the address of the token that is being staked
     address public tokenAddress;
     
+    //the struct that tracks the staking balance and the timestamp of the last staking action
     struct StakingParams{
         uint balance;
         uint timestamp;
@@ -41,8 +42,11 @@ contract D3Staking is ID3Staking, Context{
 
     receive() external payable {}
     fallback() external payable {}
-    
+
+    //the mapping that tracks the staking balance of the users
     mapping (address => StakingParams) private _balances;
+
+    //the mapping that tracks the allowances of the users
     mapping (address => mapping (address => uint256)) private _allowances;
     
     
@@ -60,7 +64,7 @@ contract D3Staking is ID3Staking, Context{
     error ERC20InvalidAmount();
     error InvalidTransfer();
     error InsufficientFunds();
-
+    error InsufficientAllowance();
 
     function name() external view returns (string memory) {
         return _name;
@@ -98,7 +102,6 @@ contract D3Staking is ID3Staking, Context{
 
     function transferFrom(address sender, address recipient, uint256 amount) private returns (bool) {
         _transfer(sender, recipient, amount);
-        _approve(sender, _msgSender(), _allowances[sender][_msgSender()] - amount);
         return true;
     }
 
@@ -107,25 +110,31 @@ contract D3Staking is ID3Staking, Context{
         emit Approval(owner, spender, amount);
     }
 
+    //token transfers should only be allowed between the owner and the staking contract
+    //making the contract non-transferable between wallets.
+    //the function is private to only be callable from the mint() and burn() functions
     function _transfer(address from, address to, uint256 amount) private {
-        //if(from != address(0) || to != address(0)){revert InvalidTransfer();}
+        if(from != address(0) && to != address(0)){revert InvalidTransfer();}
         if(from == address(0)){
             uint stakedAmount = _balances[to].balance;
             _balances[to] = StakingParams({
-                balance: stakedAmount + amount,
+                balance: stakedAmount += amount,
                 timestamp: block.timestamp
             });
         }
-         if(to == address(0)){
+        if(to == address(0)){
             uint stakedAmount = _balances[from].balance;
+            if(_allowances[from][address(this)] < amount){revert InsufficientAllowance();}
             _balances[from] = StakingParams({
-                balance: stakedAmount - amount,
+                balance: stakedAmount -= amount,
                 timestamp: block.timestamp
             });
+            _allowances[from][address(this)] -= amount;
         }
         emit Transfer(from, to, amount, block.timestamp);
     }
 
+    //allows users to stake their tokens in the staking contract
     function mint(uint amount) external {
         uint balance = IERC20(tokenAddress).balanceOf(_msgSender());
         if(balance < amount){revert InsufficientFunds();}
@@ -137,6 +146,7 @@ contract D3Staking is ID3Staking, Context{
         transfer(_msgSender(), amount);
     }
 
+    //allows users to withdraw their tokens from the staking contract
     function burn(uint amount) external {
         if(_balances[_msgSender()].balance < amount){revert InsufficientFunds();}
         if(IERC20(tokenAddress).balanceOf(address(this)) < amount){revert InsufficientFunds();}
@@ -144,7 +154,7 @@ contract D3Staking is ID3Staking, Context{
         _totalSupply -= amount;
 
         transferFrom(_msgSender(), address(0), amount);
-        IERC20(tokenAddress).transferFrom(address(this), _msgSender(), amount);
+        IERC20(tokenAddress).transfer(_msgSender(), amount);
     }
 
     function getStakingParams(address staker) external view returns (uint balance, uint timestamp){

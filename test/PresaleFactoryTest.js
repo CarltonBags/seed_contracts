@@ -28,7 +28,7 @@ describe("PresaleFactory", function() {
 
         //deploy the presale factory
         const PresaleFactory = await ethers.getContractFactory("PresaleFactory");
-        const presaleFactory = await PresaleFactory.deploy(eAddress, nftContractAddress, sexy.address, eAddress);
+        const presaleFactory = await PresaleFactory.deploy(eAddress, nftContractAddress, eAddress);
         const pAddress = await presaleFactory.getAddress();
 
         const sexyConnectEventhandler = eventhandler.connect(sexy)

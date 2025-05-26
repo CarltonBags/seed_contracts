@@ -494,35 +494,39 @@ contract Presale is ERC1155, ReentrancyGuard {
 
     error Revert(string);
 
+    //checks if the round is live
     function roundLive(uint start, uint end) private {
         if(block.timestamp <= start || block.timestamp >= end){
             revert Revert("the round is not live");
         }
     }
 
-
+    //only allows the admin or the presale master to call the function
     modifier onlyAdmin(){
         require(admins[_msgSender()] || _msgSender() == presaleMaster, "Not Authorized");
         _;
     }
 
     constructor (address _presaleMaster, address _tokenAddress, string memory _uri, address _eventhandler, address _nftAddress, address _usdc) ERC1155(_uri){
-        tokenAddress = _tokenAddress;
+        tokenAddress = _tokenAddress;//address of the presold token
         eventhandler = _eventhandler;
-        nftAddress = _nftAddress;
+        nftAddress = _nftAddress;//D3 NFT address to check ownerhip in Round 1
         usdc = _usdc;
-        presaleMaster = _presaleMaster;
+        presaleMaster = _presaleMaster; //address of the presale master
         tokenDecimals = IERC20(_tokenAddress).decimals();
     }
 
 
     //PRESALE ROUND 1 FUNCTIONS
+
+    //allows the user to buy a batch of LNFTs, which act as the receipts for Round 1 Buyers.
+    //The function checks if a user holds a D3 NFT and allows only to mint 1 LNFT per D3 NFT.
     function buyBatchLNFT(uint amount, uint [] calldata d3IDs) external nonReentrant{
         roundLive(params1.start, params1.end);
         if(canceled){revert Revert("Presale canceled");}
         if(amount != d3IDs.length){revert Revert("amount != input array length");}
-        batchOwnershipCheck(d3IDs);
-        batchAllocation(d3IDs);
+        batchOwnershipCheck(d3IDs);//checks if the user owns the D3 NFTs
+        batchAllocation(d3IDs);//
         uint totalCost = amount * params1.pricePerLNFT;
        
         if(totalCost > IERC20(usdc).balanceOf(_msgSender())){revert Revert("not enough USDC");}
@@ -539,6 +543,7 @@ contract Presale is ERC1155, ReentrancyGuard {
         IEventhandler(eventhandler).lNFTBought(_msgSender(), address(this), amount, totalCost);
     }
 
+    //allows the owner of an LNFT to withdraw their tokens, which includes burning the LNFTs.
     function withdrawTokensRoundOne(uint amountLNFT) external nonReentrant{
         if(!unlocked){revert Revert("tokens are locked");}
         uint balanceLNFT = balanceOf(_msgSender(), 1);
@@ -554,7 +559,10 @@ contract Presale is ERC1155, ReentrancyGuard {
         IEventhandler(eventhandler).tokensWithdrawn(_msgSender(), address(this), tokenAddress, amountERC20);
     }
     
-
+    //user that do not own a D3 NFT can buy in Round 2 and 3.. They will NOT get an LNFT as receipt.
+    //Their balances are tracked seperately from Round 1 buyers.
+    //The distinction between Round 2 and Round 3 is just the requirement of holding a certain amount of gatingToken
+    //for Round 2 participation to
     function buyRoundTwoAndThree(uint amount, uint8 round) external nonReentrant{
         if(round != 2 && round != 3){revert Revert("wrong round input");}
         presaleChecks(amount);
@@ -590,7 +598,7 @@ contract Presale is ERC1155, ReentrancyGuard {
         IEventhandler(eventhandler).tokensBought(_msgSender(), address(this), tokenAddress, amount, totalCost, round);
     }
 
-
+    //allows withdrawal of tokens, but unlike Round 1 buyers, this is a regular withdrawal without any burns or anything fancy.
     function withdrawTokensRoundTwoAndThree(uint amount) external nonReentrant{
         if(!unlocked){revert Revert("tokens are locked");}
         if(canceled){revert Revert("presale canceled");}
@@ -636,7 +644,7 @@ contract Presale is ERC1155, ReentrancyGuard {
         14: max Wallet round 3
         15: softcap
     */
-
+   // allows the admin to create a presale
     function createPresale(uint [] memory params, address _gatingToken) external onlyAdmin {
         if(presaleCreated){revert Revert("presale already created");}
         if(params[0] <= block.timestamp){revert Revert("presale cannot start in the past");}

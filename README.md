@@ -1,13 +1,32 @@
-# Sample Hardhat Project
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a Hardhat Ignition module that deploys that contract.
+The Smart contracts in this repository are designed to create regular ERC20 Tokens and Presales
 
-Try running some of the following tasks:
 
-```shell
-npx hardhat help
-npx hardhat test
-REPORT_GAS=true npx hardhat test
-npx hardhat node
-npx hardhat ignition deploy ./ignition/modules/Lock.js
-```
+
+**Eventhandler**
+this contract is simply there to pick up all relevant events emitted by the presale-factory, the token-factory and the individual presales.
+
+
+**TokenFactory**
+Allows the owner of the factory to mint regular ERC20 Tokens that have no owner functions and emits a creation event through the Eventhandler.
+
+**D3Staking**
+The Staking Contract that allows users to stake a specific Token (set by the Deployer) that tracks staking balances of the users which is needed later for the presale.
+
+**PresaleFactory**
+Allows the owner of the factory to create new Presale contracts. 
+
+
+**Presale**
+The core of the protocol. The Presale contract is designed to allow the admin of the contract to create a presale of a regular ERC20 token in a centralized way. The presales are set to function in the following way:
+
+- Round 1: NFT Round
+-- Buyers have to hold a specific ERC721 NFT (The D3 NFT), to be able to buy in Round 1.
+
+- Round 2: Private Round
+-- Buyers have to hold a specific balance of the Staking-Token (D3Staking) to be able to buy in Round 2.
+
+- Round 3: Public Round
+-- The remaining allocation is sold publicly with the only restriction being a max balance per wallet.
+
+

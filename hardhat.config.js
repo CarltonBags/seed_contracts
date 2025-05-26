@@ -49,10 +49,10 @@ module.exports = {
         count: 30
       }
     },*/
-    /*base: {
+    base: {
       url: process.env.BASE_ENDPOINT,
-      accounts: [process.env.PRIVATE_KEY],
-    },
+      accounts: [process.env.PRIVATE_KEY_1],
+    },/*
     sepolia: {
       url: process.env.SEPOLIA_ENDPOINT,
       accounts: [process.env.PRIVATE_KEY]
