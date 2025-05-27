@@ -11,7 +11,7 @@ this contract is simply there to pick up all relevant events emitted by the pres
 Allows the owner of the factory to mint regular ERC20 Tokens that have no owner functions and emits a creation event through the Eventhandler.
 
 **D3Staking**:
-The Staking Contract that allows users to stake a specific Token (set by the Deployer) that tracks staking balances of the users which is needed later for the presale.
+The Staking Contract that allows users to stake a specific Token (set by the Deployer) that tracks staking balances of the users which is needed later for Round 2 of presale, which is restricted to users that had a sufficient stake prior to the begin of the presale.
 
 **PresaleFactory**:
 Allows the owner of the factory to create new Presale contracts. 
@@ -28,6 +28,10 @@ The core of the protocol. The Presale contract is designed to allow the admin of
 
 - Round 3: Public Round
 -- The remaining allocation is sold publicly with the only restriction being a max balance per wallet.
+
+- Cancellation: if a presale fails to reach the softcap or is cancelled by an admin, all users should be able to withdraw their deposited USDC and the presale owner should be able to withdraw the presale tokens.<
+
+- Success: If a presale reaches the softcap and is not cancelled, the owner should be allowed to withdraw the raised USDC while the presale participants should be able to withdraw their presale balance.
 
 
 **Explainer:
